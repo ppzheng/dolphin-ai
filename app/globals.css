@@ -168,3 +168,27 @@ body {
 .node-flicker {
   animation: node-flicker 4s ease-in-out infinite;
 }
+
+@keyframes breathe-intense {
+  0%, 100% { opacity: 0.95; filter: drop-shadow(0 0 44px #c084fcc0) drop-shadow(0 0 110px #a855f788) drop-shadow(0 0 22px #e9d5ff66); }
+  50%       { opacity: 1;    filter: drop-shadow(0 0 80px #c084fcff) drop-shadow(0 0 180px #a855f7aa) drop-shadow(0 0 40px #e9d5ffaa); }
+}
+.logo-breathe-intense {
+  animation: breathe-intense 0.9s ease-in-out infinite;
+}
+
+@keyframes flow-active {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+.flow-active {
+  animation: flow-active 0.75s ease-in-out infinite;
+}
+
+@keyframes signal-fadein {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.signal-fadein {
+  animation: signal-fadein 0.5s ease forwards;
+}
