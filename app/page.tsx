@@ -1,4 +1,3 @@
-import Image from "next/image";
 
 const markets = [
   {
@@ -62,14 +61,13 @@ export default function Home() {
         style={{ background: "#07000f", borderBottom: "1px solid #2d1b4e" }}
       >
         <div className="flex items-center gap-3">
-          <Image
+          <img
             src="/logo.png"
             alt="Dolphin AI"
             width={32}
             height={32}
             className="logo-glow"
             style={{ mixBlendMode: "screen" }}
-            priority
           />
           <span
             className="font-semibold text-sm uppercase"
@@ -145,14 +143,13 @@ export default function Home() {
                 filter: "blur(20px)",
               }}
             />
-            <Image
+            <img
               src="/logo.png"
               alt="Dolphin AI"
               width={136}
               height={136}
               className="logo-breathe relative z-10"
               style={{ mixBlendMode: "screen" }}
-              priority
             />
           </div>
 
@@ -334,7 +331,7 @@ export default function Home() {
                       className="agent-ring absolute inset-0 rounded-full"
                       style={{ background: "transparent", border: "1px solid #a855f733" }}
                     />
-                    <Image
+                    <img
                       src="/logo.png"
                       alt="Dolphin AI"
                       width={44}

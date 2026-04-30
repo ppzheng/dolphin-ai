@@ -1,6 +1,5 @@
 "use client";
 import { useState, useRef } from "react";
-import Image from "next/image";
 import Link from "next/link";
 
 const canvasNodes = [
@@ -58,7 +57,7 @@ export default function Canvas() {
       <header className="flex-shrink-0 flex items-center justify-between px-4 h-12 z-50" style={{ borderBottom: "1px solid #2d1b4e", background: "#09010f" }}>
         <div className="flex items-center gap-3 min-w-0">
           <Link href="/" className="flex items-center gap-2 flex-shrink-0">
-            <Image src="/logo.png" alt="Dolphin AI" width={22} height={22} style={{ mixBlendMode: "screen" }} />
+            <img src="/logo.png" alt="Dolphin AI" width={22} height={22} style={{ mixBlendMode: "screen" }} />
             <span className="text-xs font-mono uppercase tracking-widest" style={{ color: "#c084fc" }}>Canvas</span>
           </Link>
         </div>
@@ -185,13 +184,12 @@ export default function Canvas() {
               <div className="absolute rounded-full pointer-events-none" style={{ inset: -26, border: "1px solid #a855f724" }} />
               {/* Close glow */}
               <div className="absolute rounded-full pointer-events-none" style={{ inset: -55, background: "radial-gradient(circle, #7c3aed24 0%, transparent 70%)", filter: "blur(14px)" }} />
-              <Image
+              <img
                 src="/logo.png"
                 alt="Dolphin AI"
                 width={120}
                 height={120}
                 className="logo-breathe"
-                priority
               />
             </div>
 
