@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #07000f;
+  --foreground: #f0e6ff;
 }
 
 @theme inline {
@@ -10,17 +10,161 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-neon: #c084fc;
+  --color-neon-dim: #7c3aed;
+  --color-surface: #0f0520;
+  --color-border: #2d1b4e;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+}
+
+.neon-text {
+  color: #ddd6fe;
+  text-shadow:
+    0 0 12px #c084fcdd,
+    0 0 40px #a855f799,
+    0 0 90px #7c3aed55,
+    0 0 160px #7c3aed22;
+}
+
+.neon-glow {
+  box-shadow: 0 0 24px #7c3aed44, 0 0 1px #c084fc66;
+}
+
+.card-surface {
+  background: linear-gradient(135deg, #0f0520 0%, #130828 100%);
+  border: 1px solid #2d1b4e;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, box-shadow 0.28s ease;
+}
+
+.card-surface:hover {
+  border-color: #6d28d9;
+  box-shadow: 0 8px 32px #7c3aed2a, 0 0 0 1px #7c3aed22;
+  transform: translateY(-5px);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  box-shadow: 0 0 28px #7c3aed55, 0 2px 8px #00000044;
+  color: #fff;
+  border: none;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 52px #a855f788, 0 0 18px #c084fc44, 0 4px 16px #00000055;
+  transform: translateY(-2px) scale(1.02);
+}
+
+.btn-secondary {
+  transition: border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-secondary:hover {
+  border-color: #7c3aed !important;
+  color: #c084fc !important;
+  box-shadow: 0 0 16px #7c3aed22;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes agent-ring {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+.agent-ring {
+  animation: agent-ring 2.4s ease-out infinite;
+}
+
+@keyframes scan-line {
+  0% { transform: translateY(-100%); opacity: 0; }
+  20% { opacity: 0.6; }
+  80% { opacity: 0.6; }
+  100% { transform: translateY(400%); opacity: 0; }
+}
+
+.scan-line {
+  animation: scan-line 3s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1);    opacity: 0.88; filter: drop-shadow(0 0 20px #a855f799) drop-shadow(0 0 60px #7c3aed55) drop-shadow(0 0 8px #c084fc44); }
+  50%       { transform: scale(1.06); opacity: 1;    filter: drop-shadow(0 0 40px #c084fcc0) drop-shadow(0 0 100px #7c3aed88) drop-shadow(0 0 16px #e9d5ff66); }
+}
+
+.logo-breathe {
+  animation: breathe 3.8s ease-in-out infinite;
+}
+
+.logo-glow {
+  filter: drop-shadow(0 0 12px #a855f788) drop-shadow(0 0 32px #7c3aed55);
+}
+
+.node-card {
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease;
+}
+
+.node-card:hover {
+  transform: scale(1.06) translateY(-4px);
+}
+
+@keyframes orbit-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.orbit-spin {
+  animation: orbit-spin 28s linear infinite;
+  transform-origin: center;
+}
+
+.dot-grid {
+  background-image: radial-gradient(circle, #2d1b4e44 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+
+@keyframes flow-in {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 60; }
+}
+.line-flow-in {
+  animation: flow-in 2.2s linear infinite;
+}
+
+@keyframes flow-out {
+  from { stroke-dashoffset: 60; }
+  to   { stroke-dashoffset: 0; }
+}
+.line-flow-out {
+  animation: flow-out 2.2s linear infinite;
+}
+
+@keyframes core-pulse {
+  0%, 100% { box-shadow: 0 0 28px 5px #7c3aed18, inset 0 0 20px 4px #7c3aed0a; }
+  50%       { box-shadow: 0 0 52px 10px #7c3aed30, inset 0 0 40px 8px #7c3aed1c; }
+}
+.core-pulse {
+  animation: core-pulse 3.2s ease-in-out infinite;
+}
+
+@keyframes node-flicker {
+  0%, 80%, 100% { opacity: 1; }
+  84%            { opacity: 0.35; }
+  88%            { opacity: 0.85; }
+  93%            { opacity: 0.45; }
+}
+.node-flicker {
+  animation: node-flicker 4s ease-in-out infinite;
 }
