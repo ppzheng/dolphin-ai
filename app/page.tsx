@@ -1,468 +1,379 @@
+"use client";
+import { useState, useEffect } from "react";
+import Link from "next/link";
 
-const markets = [
+// ── Background floating prediction cards (5 max, evenly framing the title) ────
+const CARD_EVENTS = [
   {
-    id: 1,
-    title: "BTC/USD End of Week",
-    prediction: "BULLISH",
-    confidence: 87,
-    target: "$98,400",
-    current: "$94,210",
-    delta: "+4.4%",
-    positive: true,
-    volume: "$2.1B",
-    closes: "48h",
+    id: "btc",      cf: "cf1",
+    cat: "Crypto",  icon: "₿", accent: "#f7931a",
+    title: "Will BTC hit $100K in 2026?",
+    yes: 42, no: 58,
+    spark: "0,26 10,22 20,24 30,16 40,18 50,10 60,14 70,8 80,11",
+    pos: { left: "4%", top: "12%" },
   },
   {
-    id: 2,
-    title: "ETH/USD 30-Day Outlook",
-    prediction: "NEUTRAL",
-    confidence: 61,
-    target: "$3,280",
-    current: "$3,190",
-    delta: "+2.8%",
-    positive: true,
-    volume: "$890M",
-    closes: "28d",
+    id: "election", cf: "cf2",
+    cat: "Politics", icon: "⬡", accent: "#f472b6",
+    title: "Trump wins 2028 US election?",
+    yes: 71, no: 29,
+    spark: "0,20 10,16 20,18 30,12 40,10 50,14 60,8 70,6 80,5",
+    pos: { right: "4%", top: "14%" },
   },
   {
-    id: 3,
-    title: "SOL/USD Next Session",
-    prediction: "BEARISH",
-    confidence: 74,
-    target: "$138",
-    current: "$151",
-    delta: "-8.6%",
-    positive: false,
-    volume: "$420M",
-    closes: "12h",
+    id: "apple",    cf: "cf3",
+    cat: "Stocks",  icon: "◬", accent: "#10b981",
+    title: "AAPL closes above $250 this week?",
+    yes: 55, no: 45,
+    spark: "0,16 10,18 20,14 30,20 40,15 50,11 60,14 70,18 80,13",
+    pos: { left: "2%", top: "54%" },
+  },
+  {
+    id: "spacex",   cf: "cf4",
+    cat: "Tech",    icon: "◇", accent: "#a78bfa",
+    title: "SpaceX IPO before end of 2026?",
+    yes: 38, no: 62,
+    spark: "0,18 10,22 20,20 30,25 40,21 50,17 60,22 70,18 80,22",
+    pos: { right: "2%", top: "50%" },
+  },
+  {
+    id: "fed",      cf: "cf5",
+    cat: "Macro",   icon: "◎", accent: "#22d3ee",
+    title: "Fed rate cut at June 2026?",
+    yes: 63, no: 37,
+    spark: "0,18 10,14 20,16 30,10 40,12 50,7 60,10 70,5 80,7",
+    pos: { left: "32%", bottom: "13%" },
   },
 ];
 
-function predictionColor(p: string) {
-  if (p === "BULLISH") return "text-emerald-400";
-  if (p === "BEARISH") return "text-rose-400";
-  return "text-amber-400";
-}
+// ── Bottom ticker ─────────────────────────────────────────────────────────────
+const TICKER_BASE = [
+  { q: "BTC > $100K by Dec 2026?",      yes: 42, no: 58, cat: "Crypto",      icon: "₿"  },
+  { q: "Fed rate cut at Jun meeting?",   yes: 63, no: 37, cat: "Macro",       icon: "◎"  },
+  { q: "AI achieves AGI by 2030?",       yes: 38, no: 62, cat: "Tech",        icon: "◈"  },
+  { q: "Trump wins 2028 election?",      yes: 71, no: 29, cat: "Politics",    icon: "⬡"  },
+  { q: "SOL ETF approved in 2026?",      yes: 34, no: 66, cat: "Crypto",      icon: "◇"  },
+  { q: "Inflation < 2% by year end?",    yes: 29, no: 71, cat: "Macro",       icon: "▷"  },
+  { q: "AAPL closes > $250 this week?",  yes: 55, no: 45, cat: "Stocks",      icon: "◬"  },
+  { q: "Gold > $3,500 by Dec 2026?",     yes: 44, no: 56, cat: "Commodities", icon: "⊞"  },
+  { q: "Champions League: Real Madrid?", yes: 33, no: 67, cat: "Sports",      icon: "◉"  },
+  { q: "USD/EUR parity by Q3 2026?",     yes: 18, no: 82, cat: "Forex",       icon: "◐"  },
+];
 
-function predictionBg(p: string) {
-  if (p === "BULLISH") return "bg-emerald-400/10 border-emerald-400/30";
-  if (p === "BEARISH") return "bg-rose-400/10 border-rose-400/30";
-  return "bg-amber-400/10 border-amber-400/30";
-}
+const CAT_COLOR: Record<string, string> = {
+  Crypto: "#f7931a", Macro: "#22d3ee", Tech: "#a78bfa",
+  Politics: "#f472b6", Stocks: "#10b981", Commodities: "#fbbf24",
+  Sports: "#fb923c", Forex: "#60a5fa",
+};
 
-const agentSteps = ["Perceive", "Think", "Decide", "Execute"];
+const NAV = ["Markets", "Portfolio", "Analytics", "Docs"];
 
 export default function Home() {
+  const [cardPx, setCardPx] = useState(CARD_EVENTS.map(c => ({ yes: c.yes, no: c.no })));
+  const [tickPx, setTickPx] = useState(TICKER_BASE.map(t => ({ yes: t.yes, no: t.no })));
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const jitter = (spread: number) => Math.floor(Math.random() * spread) - Math.floor(spread / 2);
+      setCardPx(p => p.map(v => {
+        const yes = Math.max(5, Math.min(95, v.yes + jitter(5)));
+        return { yes, no: 100 - yes };
+      }));
+      setTickPx(p => p.map(v => {
+        const yes = Math.max(5, Math.min(95, v.yes + jitter(3)));
+        return { yes, no: 100 - yes };
+      }));
+    }, 2000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#07000f" }}>
-      {/* Header */}
-      <header
-        className="sticky top-0 z-50 flex items-center justify-between px-8 py-4"
-        style={{ background: "#07000f", borderBottom: "1px solid #2d1b4e" }}
-      >
+    <div className="relative min-h-screen flex flex-col overflow-hidden"
+      style={{ background: "#07000f", color: "#f0e6ff" }}>
+
+      <style>{`
+        /* ── Card float (slow, gentle — rotation baked in) ── */
+        @keyframes cf1{0%,100%{transform:rotate(-6deg) translateY(0px)}50%{transform:rotate(-6deg) translateY(-7px)}}
+        @keyframes cf2{0%,100%{transform:rotate(5deg) translateY(0px)}50%{transform:rotate(5deg) translateY(-6px)}}
+        @keyframes cf3{0%,100%{transform:rotate(-4deg) translateY(0px)}50%{transform:rotate(-4deg) translateY(-7px)}}
+        @keyframes cf4{0%,100%{transform:rotate(4deg) translateY(0px)}50%{transform:rotate(4deg) translateY(-6px)}}
+        @keyframes cf5{0%,100%{transform:rotate(-3deg) translateY(0px)}50%{transform:rotate(-3deg) translateY(-5px)}}
+        .cf1{animation:cf1 7.2s ease-in-out infinite}
+        .cf2{animation:cf2 8.4s ease-in-out 1.2s infinite}
+        .cf3{animation:cf3 7.8s ease-in-out 2.5s infinite}
+        .cf4{animation:cf4 9.0s ease-in-out 0.6s infinite}
+        .cf5{animation:cf5 8.0s ease-in-out 3.0s infinite}
+
+        /* ── Card hover ── */
+        .pcard{transition:opacity .3s ease}
+        .pcard:hover{opacity:0.38!important;cursor:default}
+
+        /* ── Dolphin orb ── */
+        @keyframes hero-float{
+          0%,100%{transform:translateY(0px) scale(1)}
+          50%{transform:translateY(-14px) scale(1.045)}
+        }
+        .hero-float{
+          animation:hero-float 4.8s ease-in-out infinite;
+          filter:drop-shadow(0 0 28px rgba(168,85,247,.7)) drop-shadow(0 0 70px rgba(124,58,237,.45)) drop-shadow(0 0 8px rgba(196,132,252,.6));
+        }
+
+        /* ── Expanding rings ── */
+        @keyframes ring-out{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.9);opacity:0}}
+        .ring-a{animation:ring-out 3.4s ease-out infinite}
+        .ring-b{animation:ring-out 3.4s ease-out 1.7s infinite}
+
+        /* ── CTA glow pulse ── */
+        @keyframes cta-pulse{
+          0%,100%{box-shadow:0 0 22px rgba(168,85,247,.5),0 4px 18px rgba(0,0,0,.45)}
+          50%{box-shadow:0 0 44px rgba(168,85,247,.85),0 4px 18px rgba(0,0,0,.45)}
+        }
+        .cta-btn{animation:cta-pulse 3s ease-in-out infinite;transition:transform .2s ease,box-shadow .2s ease}
+        .cta-btn:hover{transform:translateY(-3px) scale(1.05);animation-play-state:paused;box-shadow:0 0 60px rgba(168,85,247,1),0 8px 28px rgba(0,0,0,.55)!important}
+
+        /* ── Ticker ── */
+        @keyframes ticker-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+        .ticker-track{display:flex;white-space:nowrap;animation:ticker-scroll 46s linear infinite;will-change:transform}
+        .ticker-track:hover{animation-play-state:paused}
+
+        /* ── Price transition ── */
+        .pcell{transition:color .35s ease}
+
+        /* ── Hide cards on small screens ── */
+        @media(max-width:900px){.bg-card{display:none!important}}
+      `}</style>
+
+      {/* ── Background glows ──────────────────────────────────────────────── */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background:"radial-gradient(ellipse 70% 58% at 50% 44%, #3d0d6e40 0%, transparent 68%)",
+      }}/>
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background:"radial-gradient(ellipse 42% 72% at -4% 55%, #7c3aed1e 0%, transparent 55%)",
+      }}/>
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background:"radial-gradient(ellipse 42% 72% at 104% 55%, #1d4ed816 0%, transparent 55%)",
+      }}/>
+      {/* scan lines for texture */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        backgroundImage:"repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(124,58,237,0.012) 3px,rgba(124,58,237,0.012) 4px)",
+      }}/>
+
+      {/* ── Nav ───────────────────────────────────────────────────────────── */}
+      <header className="relative z-30 flex items-center justify-between px-8 py-4 flex-shrink-0"
+        style={{borderBottom:"1px solid #2d1b4e30"}}>
         <div className="flex items-center gap-3">
-          <img
-            src="/logo.png"
-            alt="Dolphin AI"
-            width={32}
-            height={32}
-            className="logo-glow"
-            style={{ mixBlendMode: "screen" }}
-          />
-          <span
-            className="font-semibold text-sm uppercase"
-            style={{ color: "#c084fc", letterSpacing: "0.18em" }}
-          >
+          <img src="/logo.png" alt="Dolphin AI" width={26} height={26}
+            className="logo-glow" style={{mixBlendMode:"screen"}}/>
+          <span className="font-semibold text-sm tracking-[0.18em] uppercase" style={{color:"#c084fc"}}>
             Dolphin AI
           </span>
         </div>
         <nav className="hidden md:flex items-center gap-8">
-          {["Markets", "Portfolio", "Analytics", "Docs"].map((item) => (
-            <a
-              key={item}
-              href="#"
-              className="text-sm transition-colors"
-              style={{ color: "#8b5cf6" }}
-            >
+          {NAV.map(item => (
+            <a key={item} href="#" className="text-sm" style={{color:"#8b5cf6",transition:"color .15s"}}
+              onMouseEnter={e=>(e.currentTarget.style.color="#d8b4fe")}
+              onMouseLeave={e=>(e.currentTarget.style.color="#8b5cf6")}>
               {item}
             </a>
           ))}
         </nav>
-        <button
-          className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
-          style={{
-            background: "linear-gradient(135deg, #7c3aed22, #c084fc11)",
-            border: "1px solid #7c3aed66",
-            color: "#c084fc",
-          }}
-        >
-          <span className="w-2 h-2 rounded-full bg-emerald-400 pulse-dot" />
-          Live
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono"
+            style={{background:"#10b98112",border:"1px solid #10b98132",color:"#10b981",boxShadow:"0 0 14px #10b98120"}}>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"/>
+            Live
+          </div>
+          <Link href="/canvas"
+            className="px-4 py-1.5 rounded-full text-xs font-mono font-medium"
+            style={{background:"linear-gradient(135deg,#7c3aed,#a855f7)",color:"#fff",boxShadow:"0 0 14px #7c3aed44"}}>
+            Open Canvas
+          </Link>
+        </div>
       </header>
 
-      <main className="flex-1 flex flex-col">
-        {/* Hero */}
-        <section className="relative flex flex-col items-center justify-center text-center px-8 pt-24 pb-20 overflow-hidden">
-          {/* Background radial glows */}
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              background:
-                "radial-gradient(ellipse 70% 50% at 50% 40%, #4c1d9522 0%, transparent 70%)",
-            }}
-          />
-          <div
-            className="absolute pointer-events-none"
-            style={{
-              top: "20%",
-              left: "50%",
-              transform: "translateX(-50%)",
-              width: "400px",
-              height: "400px",
-              background:
-                "radial-gradient(circle, #7c3aed18 0%, transparent 65%)",
-              filter: "blur(24px)",
-            }}
-          />
+      {/* ── Hero ──────────────────────────────────────────────────────────── */}
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-6 overflow-hidden"
+        style={{paddingBottom:"88px"}}>
 
-          {/* Hero logo core */}
-          <div className="relative flex items-center justify-center mb-10">
-            {/* Outer pulse ring — circular */}
-            <div
-              className="absolute rounded-full agent-ring"
-              style={{ width: 172, height: 172, border: "1px solid #a855f733" }}
-            />
-            {/* Inner ambient glow */}
-            <div
-              className="absolute rounded-full pointer-events-none"
+        {/* Large background dolphin silhouette */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          style={{zIndex:1,transform:"translateY(-16px)"}}>
+          <img src="/logo.png" alt="" style={{
+            width:540, height:540,
+            opacity:0.16,
+            mixBlendMode:"screen",
+            filter:"drop-shadow(0 0 100px rgba(168,85,247,1)) drop-shadow(0 0 220px rgba(124,58,237,.8)) drop-shadow(0 0 50px rgba(196,132,252,.9))",
+          }}/>
+        </div>
+
+        {/* Central energy orb (additional glow layer) */}
+        <div className="absolute pointer-events-none" style={{
+          zIndex:1,
+          top:"50%", left:"50%",
+          transform:"translate(-50%,-50%) translateY(-30px)",
+          width:480, height:480,
+          background:"radial-gradient(circle, #7c3aed2a 0%, #4c1d9514 45%, transparent 72%)",
+          filter:"blur(56px)",
+        }}/>
+
+        {/* ── Floating background cards ── */}
+        {CARD_EVENTS.map((card, i) => {
+          const p = cardPx[i];
+          return (
+            <div key={card.id}
+              className={`bg-card ${card.cf} pcard`}
               style={{
-                width: 200,
-                height: 200,
-                background: "radial-gradient(circle, #7c3aed20 0%, transparent 70%)",
-                filter: "blur(20px)",
-              }}
-            />
-            <img
-              src="/logo.png"
-              alt="Dolphin AI"
-              width={136}
-              height={136}
-              className="logo-breathe relative z-10"
-              style={{ mixBlendMode: "screen" }}
-            />
+                position:"absolute", ...card.pos, zIndex:5,
+                width:188,
+                opacity:0.2,
+                background:"linear-gradient(135deg,rgba(14,4,30,.92) 0%,rgba(18,5,38,.88) 100%)",
+                border:`1px solid ${card.accent}28`,
+                borderRadius:12,
+                padding:"11px 13px",
+                backdropFilter:"blur(8px)",
+                WebkitBackdropFilter:"blur(8px)",
+                boxShadow:`0 0 16px ${card.accent}14,0 4px 20px rgba(0,0,0,.4)`,
+              }}>
+
+              {/* Category */}
+              <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:7}}>
+                <span style={{fontSize:10,color:card.accent}}>{card.icon}</span>
+                <span style={{fontSize:8,fontFamily:"monospace",textTransform:"uppercase",letterSpacing:"0.1em",color:card.accent+"99"}}>
+                  {card.cat}
+                </span>
+              </div>
+
+              {/* Title */}
+              <div style={{fontSize:11,color:"#c4b4e0",fontWeight:500,lineHeight:1.4,marginBottom:10}}>
+                {card.title}
+              </div>
+
+              {/* Sparkline */}
+              <svg width="100%" height="22" viewBox="0 0 80 28" preserveAspectRatio="none"
+                style={{display:"block",marginBottom:9,opacity:.7}}>
+                <polyline points={card.spark} fill="none"
+                  stroke={card.accent} strokeWidth="1.4"
+                  strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+
+              {/* YES / NO */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <span style={{fontSize:8,fontFamily:"monospace",color:"#10b98155"}}>YES </span>
+                  <span className="pcell" style={{fontSize:13,fontFamily:"monospace",fontWeight:700,color:"#10b981"}}>{p.yes}¢</span>
+                </div>
+                <div style={{width:1,height:14,background:"#2d1b4e"}}/>
+                <div>
+                  <span style={{fontSize:8,fontFamily:"monospace",color:"#f8717155"}}>NO </span>
+                  <span className="pcell" style={{fontSize:13,fontFamily:"monospace",fontWeight:700,color:"#f87171"}}>{p.no}¢</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* ── Center content ── */}
+        <div className="relative flex flex-col items-center" style={{zIndex:20}}>
+
+          {/* Logo orb */}
+          <div className="relative flex items-center justify-center mb-8" style={{width:112,height:112}}>
+            <div className="ring-a absolute rounded-full" style={{width:86,height:86,border:"1px solid #a855f768"}}/>
+            <div className="ring-b absolute rounded-full" style={{width:86,height:86,border:"1px solid #a855f748"}}/>
+            <div className="absolute rounded-full" style={{width:92,height:92,border:"1px solid #a855f722"}}/>
+            <div className="absolute rounded-full" style={{
+              width:64,height:64,
+              border:"1px solid #7c3aed44",
+              background:"radial-gradient(circle,#7c3aed1c 0%,transparent 70%)",
+            }}/>
+            <img src="/logo.png" alt="Dolphin AI" width={68} height={68}
+              className="hero-float relative z-10" style={{mixBlendMode:"screen"}}/>
           </div>
 
-          <div
-            className="relative text-xs tracking-[0.3em] uppercase mb-5 font-mono"
-            style={{ color: "#8b5cf6" }}
-          >
+          {/* Eyebrow */}
+          <div className="text-xs tracking-[0.32em] uppercase font-mono mb-5"
+            style={{color:"#7c3aed",textShadow:"0 0 12px #7c3aed88"}}>
             AI-Powered Prediction Markets
           </div>
-          <h1
-            className="relative text-6xl md:text-8xl font-bold tracking-tight mb-6 neon-text"
-            style={{ lineHeight: 1.05 }}
-          >
-            Dolphin AI
+
+          {/* Main headline */}
+          <h1 className="font-semibold tracking-tight mb-5" style={{
+            fontSize:"clamp(3.4rem,10vw,6.8rem)",
+            lineHeight:1.03,
+            color:"#fff",
+            textShadow:"0 0 16px rgba(168,85,247,.85),0 0 40px rgba(168,85,247,.55),0 0 90px rgba(124,58,237,.35),0 0 180px rgba(124,58,237,.18)",
+          }}>
+            Trade the future.
           </h1>
-          <p
-            className="relative text-lg md:text-xl max-w-md"
-            style={{ color: "#9d7fc0", letterSpacing: "0.02em" }}
-          >
-            Trade with instinct.
-            <br />
-            Execute with intelligence.
+
+          {/* Subtitle */}
+          <p className="text-base md:text-lg leading-relaxed mb-10 max-w-sm" style={{color:"#9d7fc0"}}>
+            AI-powered prediction markets.<br/>
+            Discover, analyze, and act with confidence.
           </p>
-          <div className="relative flex items-center gap-4 mt-10">
-            <button className="btn-primary px-8 py-3 rounded-full text-sm font-semibold">
-              Start Trading
-            </button>
-            <button
-              className="btn-secondary px-8 py-3 rounded-full text-sm font-medium"
-              style={{ border: "1px solid #2d1b4e", color: "#8b5cf6" }}
-            >
-              View Markets
-            </button>
-          </div>
-        </section>
 
-        {/* Market Cards */}
-        <section className="px-6 md:px-12 pb-12 max-w-6xl w-full mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <h2
-              className="text-xs tracking-[0.25em] uppercase font-mono"
-              style={{ color: "#7c3aed" }}
-            >
-              Active Predictions
-            </h2>
-            <span className="text-xs font-mono" style={{ color: "#4a3060" }}>
-              3 markets live
-            </span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {markets.map((m) => (
-              <div key={m.id} className="card-surface rounded-2xl p-6 cursor-pointer">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <div className="text-xs font-mono mb-1.5" style={{ color: "#3b2060" }}>
-                      PRED · {m.closes} left
-                    </div>
-                    <div className="font-semibold text-sm" style={{ color: "#e2d4f0" }}>
-                      {m.title}
-                    </div>
-                  </div>
-                  <span
-                    className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full border ${predictionBg(m.prediction)} ${predictionColor(m.prediction)}`}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full ${
-                      m.prediction === "BULLISH" ? "bg-emerald-400" :
-                      m.prediction === "BEARISH" ? "bg-rose-400" : "bg-amber-400"
-                    }`} />
-                    {m.prediction.charAt(0) + m.prediction.slice(1).toLowerCase()}
-                  </span>
-                </div>
+          {/* CTA */}
+          <Link href="/canvas"
+            className="cta-btn inline-flex items-center gap-2.5 rounded-full font-semibold text-sm"
+            style={{padding:"15px 42px",background:"linear-gradient(135deg,#7c3aed,#a855f7)",color:"#fff"}}>
+            Enter Canvas
+            <span style={{fontSize:18,lineHeight:1}}>→</span>
+          </Link>
 
-                <div className="mb-4">
-                  <div className="flex justify-between text-xs mb-1" style={{ color: "#6b4d90" }}>
-                    <span>Confidence</span>
-                    <span className="font-mono" style={{ color: "#c084fc" }}>
-                      {m.confidence}%
-                    </span>
-                  </div>
-                  <div className="h-1 rounded-full" style={{ background: "#1a0d30" }}>
-                    <div
-                      className="h-1 rounded-full"
-                      style={{
-                        width: `${m.confidence}%`,
-                        background: "linear-gradient(90deg, #7c3aed, #c084fc)",
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  {[
-                    { label: "Current", value: m.current, highlight: false },
-                    { label: "Target", value: m.target, highlight: true, positive: m.positive },
-                    { label: "Delta", value: m.delta, highlight: true, positive: m.positive },
-                    { label: "Closes in", value: m.closes, highlight: false },
-                  ].map((cell) => (
-                    <div key={cell.label}>
-                      <div style={{ color: "#4a3060" }}>{cell.label}</div>
-                      <div
-                        className={`font-mono font-medium mt-0.5 ${
-                          cell.highlight
-                            ? cell.positive
-                              ? "text-emerald-400"
-                              : "text-rose-400"
-                            : ""
-                        }`}
-                        style={!cell.highlight ? { color: "#e2d4f0" } : undefined}
-                      >
-                        {cell.value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 pt-4" style={{ borderTop: "1px solid #1a0d30" }}>
-                  <div className="text-xs font-mono" style={{ color: "#4a3060" }}>
-                    Volume:{" "}
-                    <span style={{ color: "#6b4d90" }}>{m.volume}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* AI Recommendation */}
-        <section className="px-6 md:px-12 pb-16 max-w-6xl w-full mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <h2
-              className="text-xs tracking-[0.25em] uppercase font-mono"
-              style={{ color: "#c084fc" }}
-            >
-              AI Recommendation
-            </h2>
-            <div
-              className="flex items-center gap-2 text-xs font-mono"
-              style={{ color: "#4a3060" }}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 pulse-dot" />
-              Updated 43s ago
-            </div>
-          </div>
-          <div
-            className="rounded-2xl p-10 relative overflow-hidden"
-            style={{
-              background:
-                "linear-gradient(135deg, #0f0520 0%, #130828 60%, #1c0d44 100%)",
-              border: "1px solid #5b21b6",
-              boxShadow:
-                "0 0 80px #7c3aed33, 0 0 160px #7c3aed11, 0 0 0 1px #7c3aed22",
-            }}
-          >
-            {/* Top-right ambient glow */}
-            <div
-              className="absolute top-0 right-0 w-80 h-80 rounded-full pointer-events-none"
-              style={{
-                background:
-                  "radial-gradient(circle, #7c3aed22 0%, transparent 65%)",
-                transform: "translate(35%, -35%)",
-              }}
-            />
-            {/* Bottom-left ambient glow */}
-            <div
-              className="absolute bottom-0 left-0 w-64 h-64 rounded-full pointer-events-none"
-              style={{
-                background:
-                  "radial-gradient(circle, #4c1d9514 0%, transparent 70%)",
-                transform: "translate(-30%, 30%)",
-              }}
-            />
-
-            <div className="flex flex-col md:flex-row md:items-start gap-8 relative">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-5">
-                  {/* Agent logo core with pulse ring */}
-                  <div className="relative flex-shrink-0">
-                    <div
-                      className="agent-ring absolute inset-0 rounded-full"
-                      style={{ background: "transparent", border: "1px solid #a855f733" }}
-                    />
-                    <img
-                      src="/logo.png"
-                      alt="Dolphin AI"
-                      width={44}
-                      height={44}
-                      className="logo-breathe relative z-10"
-                      style={{ mixBlendMode: "screen" }}
-                    />
-                  </div>
-                  <div>
-                    <div className="text-xs font-mono mb-0.5" style={{ color: "#a855f7" }}>
-                      Agent Signal
-                    </div>
-                    <div className="font-semibold text-base" style={{ color: "#f0e6ff" }}>
-                      Long BTC / USD
-                    </div>
-                  </div>
-                  <span className="ml-auto text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-400/10 border border-emerald-400/30 text-emerald-400">
-                    LONG ↑
-                  </span>
-                </div>
-
-                <p
-                  className="text-sm leading-relaxed mb-6"
-                  style={{ color: "#9d7fc0" }}
-                >
-                  On-chain accumulation patterns suggest institutional inflows over the
-                  past 72h, with whale wallet activity up 34%. Macro sentiment has
-                  shifted bullish following Fed commentary. Order book depth at $93K
-                  shows strong support. Risk/reward ratio estimated at 1:3.2.
-                </p>
-
-                <div className="grid grid-cols-3 gap-4">
-                  {[
-                    { label: "Entry Zone", value: "$93,800–$94,500" },
-                    { label: "Take Profit", value: "$98,400" },
-                    { label: "Stop Loss", value: "$91,200" },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
-                      className="rounded-xl p-3"
-                      style={{ background: "#07000f66", border: "1px solid #1a0d30" }}
-                    >
-                      <div className="text-xs mb-1" style={{ color: "#4a3060" }}>
-                        {item.label}
-                      </div>
-                      <div
-                        className="text-sm font-mono font-medium"
-                        style={{ color: "#c084fc" }}
-                      >
-                        {item.value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="md:w-52 flex flex-col gap-5">
-                {[
-                  { label: "Model Confidence", value: "91%", bar: 91 },
-                  { label: "Sentiment Score", value: "0.74", bar: 74 },
-                  { label: "Signal Strength", value: "High", bar: 88 },
-                ].map((item) => (
-                  <div key={item.label}>
-                    <div
-                      className="flex justify-between text-xs mb-2"
-                      style={{ color: "#7c5fa0" }}
-                    >
-                      <span>{item.label}</span>
-                      <span className="font-mono font-medium" style={{ color: "#c084fc" }}>
-                        {item.value}
-                      </span>
-                    </div>
-                    <div className="h-1 rounded-full" style={{ background: "#1f0d35" }}>
-                      <div
-                        className="h-1 rounded-full"
-                        style={{
-                          width: `${item.bar}%`,
-                          background: "linear-gradient(90deg, #7c3aed, #d8b4fe)",
-                          boxShadow: "0 0 6px #a855f766",
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
+        </div>
       </main>
 
-      {/* Status Bar */}
-      <footer style={{ borderTop: "1px solid #2d1b4e", background: "#07000f" }}>
-        <div className="max-w-6xl mx-auto px-6 md:px-12 py-4 flex items-center justify-between">
-          <div className="flex items-center">
-            {agentSteps.map((step, i) => (
-              <div key={step} className="flex items-center">
-                <div className="flex items-center gap-2 px-3 md:px-4 py-1.5">
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      i === 2
-                        ? "bg-purple-400 pulse-dot"
-                        : i < 2
-                          ? "bg-emerald-400"
-                          : "bg-gray-700"
-                    }`}
-                  />
-                  <span
-                    className="text-xs font-mono hidden sm:block"
-                    style={{ color: i <= 2 ? "#8b5cf6" : "#2d1b4e" }}
-                  >
-                    {step}
-                  </span>
+      {/* ── Ticker ────────────────────────────────────────────────────────── */}
+      <div className="absolute bottom-0 left-0 right-0 z-20"
+        style={{
+          borderTop:"1px solid #2d1b4e55",
+          background:"linear-gradient(to bottom,transparent 0%,#07000f 28%)",
+          paddingTop:9, paddingBottom:11,
+          overflow:"hidden",
+        }}>
+        {/* LIVE MARKETS label */}
+        <div className="absolute left-4 top-1/2 z-10 hidden md:flex items-center gap-2"
+          style={{transform:"translateY(-50%)"}}>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"/>
+          <span style={{fontSize:9,fontFamily:"monospace",color:"#10b981",letterSpacing:"0.14em",
+            textShadow:"0 0 8px #10b981aa"}}>LIVE MARKETS</span>
+        </div>
+
+        {/* Left fade */}
+        <div className="absolute inset-y-0 left-0 z-10 pointer-events-none" style={{
+          width:150,
+          background:"linear-gradient(to right,#07000f,transparent)",
+        }}/>
+        {/* Right fade */}
+        <div className="absolute inset-y-0 right-0 z-10 pointer-events-none" style={{
+          width:100,
+          background:"linear-gradient(to left,#07000f,transparent)",
+        }}/>
+
+        <div style={{overflow:"hidden"}}>
+          <div className="ticker-track">
+            {[...TICKER_BASE, ...TICKER_BASE].map((item, i) => {
+              const p = tickPx[i % TICKER_BASE.length];
+              const ac = CAT_COLOR[item.cat] ?? "#8b5cf6";
+              return (
+                <div key={i} className="inline-flex items-center gap-2.5 flex-shrink-0"
+                  style={{padding:"0 18px",borderRight:"1px solid #2d1b4e44"}}>
+                  <span style={{fontSize:12,color:"#6b4d90"}}>{item.icon}</span>
+                  <span className="text-xs font-mono" style={{color:"#8b5cf6"}}>{item.q}</span>
+                  <span className="pcell text-xs font-mono font-semibold" style={{color:"#10b981"}}>YES {p.yes}¢</span>
+                  <span style={{color:"#2d1b4e",fontSize:10}}>·</span>
+                  <span className="pcell text-xs font-mono font-semibold" style={{color:"#f87171"}}>NO {p.no}¢</span>
+                  <span style={{
+                    fontSize:8,fontFamily:"monospace",letterSpacing:"0.06em",
+                    padding:"1px 5px",borderRadius:3,
+                    background:`${ac}14`,border:`1px solid ${ac}33`,color:ac,
+                  }}>{item.cat}</span>
                 </div>
-                {i < agentSteps.length - 1 && (
-                  <span className="text-xs" style={{ color: "#2d1b4e" }}>
-                    ›
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-          <div
-            className="flex items-center gap-3 text-xs font-mono"
-            style={{ color: "#4a3060" }}
-          >
-            <span>v0.1.0-alpha</span>
-            <span style={{ color: "#2d1b4e" }}>·</span>
-            <span>Dolphin AI</span>
+              );
+            })}
           </div>
         </div>
-      </footer>
+      </div>
+
     </div>
   );
 }

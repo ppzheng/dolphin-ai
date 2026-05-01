@@ -13,6 +13,23 @@ type DiscoveryEvent = {
   matchScore: number; outcomesCount: number; shortReason: string;
 };
 
+// ── Macro Strategy type ───────────────────────────────────────────────────────
+type MacroStrategy = {
+  id: number;
+  name: string;
+  createdAt: number;
+  options: { label: string; sub: string; accent: string; icon: string; config: { label: string; value: string }[] }[];
+  summary: string;
+};
+
+// ── Option History type ───────────────────────────────────────────────────────
+type OptionHistory = {
+  id: number;
+  type: string;
+  config: { label: string; value: string }[];
+  updatedAt: number;
+};
+
 // ── Portfolio types ───────────────────────────────────────────────────────────
 type PortfolioOrder = {
   id: number; eventTitle: string; outcome: "YES" | "NO";
@@ -241,6 +258,33 @@ function Section({ label, color, children }: { label: string; color: string; chi
   );
 }
 
+// ── Draggable hook ────────────────────────────────────────────────────────────
+function useDraggable(initialPos = { x: 200, y: 120 }) {
+  const [pos, setPos] = useState(initialPos);
+  const dragging      = useRef(false);
+  const offset        = useRef({ x: 0, y: 0 });
+
+  function onMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragging.current = true;
+    offset.current   = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    function onMove(ev: MouseEvent) {
+      if (!dragging.current) return;
+      setPos({ x: ev.clientX - offset.current.x, y: ev.clientY - offset.current.y });
+    }
+    function onUp() {
+      dragging.current = false;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  return { pos, onMouseDown };
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function Canvas() {
   const [zoom, setZoom]                         = useState(1.0);
@@ -284,9 +328,21 @@ export default function Canvas() {
 
   // Draggable window positions (null = use CSS default)
   const [selectedEventsPos, setSelectedEventsPos] = useState<{ x: number; y: number } | null>(null);
-  const [analysisPos, setAnalysisPos]             = useState<{ x: number; y: number } | null>(null);
-  const [detailPos, setDetailPos]                 = useState<{ x: number; y: number } | null>(null);
-  const [portfolioPos, setPortfolioPos]           = useState<{ x: number; y: number } | null>(null);
+
+  // Analysis Detail window — drag / resize / minimize
+  const { pos: detailPos, onMouseDown: detailHeaderMouseDown } = useDraggable({ x: 760, y: 60 });
+  const [detailSize, setDetailSize]               = useState({ width: 420, height: 580 });
+  const [detailMinimized, setDetailMinimized]     = useState(false);
+
+  // AI Market Analysis window — drag / resize / minimize
+  const { pos: analysisPos, onMouseDown: analysisHeaderMouseDown } = useDraggable({ x: 340, y: 80 });
+  const [analysisSize, setAnalysisSize]           = useState({ width: 400, height: 520 });
+  const [analysisMinimized, setAnalysisMinimized] = useState(false);
+
+  // Portfolio window — drag / resize / minimize
+  const { pos: portfolioPos, onMouseDown: portfolioHeaderMouseDown } = useDraggable({ x: 820, y: 16 });
+  const [portfolioSize, setPortfolioSize]         = useState({ width: 380, height: 560 });
+  const [portfolioMinimized, setPortfolioMinimized] = useState(false);
 
   // Canvas pan refs
   const isDragging   = useRef(false);
@@ -401,6 +457,34 @@ export default function Canvas() {
       return;
     }
 
+    // ── Option history config dragged from Macro Library ──
+    if (id.startsWith("optionhist:")) {
+      const histId = parseInt(id.slice(11));
+      const hist = optionHistory.find(h => h.id === histId);
+      if (!hist) return;
+      const mod = leftModules.find(m => m.label === hist.type);
+      if (!mod) return;
+      setDroppedNodes(prev => {
+        const idx = prev.findIndex(n => n.label === hist.type);
+        const config = hist.config.map(c => {
+          const def = (defaultConfigs[hist.type] ?? []).find(f => f.label === c.label);
+          return def ? { ...def, value: c.value } : { label: c.label, type: "text" as const, value: c.value };
+        });
+        if (idx >= 0) {
+          return prev.map((n, i) => i === idx ? { ...n, config } : n);
+        }
+        const angle = (prev.length / 7) * Math.PI * 2 - Math.PI / 2;
+        return [...prev, {
+          uid: ++uidRef.current, label: hist.type, sub: mod.sub, accent: mod.accent, icon: mod.icon,
+          x: Math.round(Math.cos(angle) * 230), y: Math.round(Math.sin(angle) * 230), config,
+        }];
+      });
+      setCenterMsg("Config loaded.");
+      if (msgTimer.current) clearTimeout(msgTimer.current);
+      msgTimer.current = setTimeout(() => setCenterMsg(null), 2000);
+      return;
+    }
+
     // ── Strategy module dropped from left panel ──
     const mod = leftModules.find(m => m.id === id);
     if (!mod) return;
@@ -479,6 +563,45 @@ export default function Canvas() {
       return;
     }
     triggerDiscovery();
+  }
+
+  // ── Analysis Detail resize ────────────────────────────────────────────────
+  function onDetailResizeMouseDown(e: React.MouseEvent) {
+    e.preventDefault(); e.stopPropagation();
+    const sw = detailSize.width, sh = detailSize.height;
+    const sx = e.clientX,        sy = e.clientY;
+    function onMove(me: MouseEvent) {
+      setDetailSize({
+        width:  Math.max(360, sw + me.clientX - sx),
+        height: Math.max(420, sh + me.clientY - sy),
+      });
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  function makeResizeHandler(
+    size: { width: number; height: number },
+    setSize: (s: { width: number; height: number }) => void,
+    minW: number, minH: number,
+  ) {
+    return function onResizeMouseDown(e: React.MouseEvent) {
+      e.preventDefault(); e.stopPropagation();
+      const sw = size.width, sh = size.height, sx = e.clientX, sy = e.clientY;
+      function onMove(me: MouseEvent) {
+        setSize({ width: Math.max(minW, sw + me.clientX - sx), height: Math.max(minH, sh + me.clientY - sy) });
+      }
+      function onUp() {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    };
   }
 
   // ── AI Chat ───────────────────────────────────────────────────────────────
@@ -577,10 +700,79 @@ export default function Canvas() {
     setBalance(b => ({ total: b.total, available: b.available + pos.size, used: b.used - pos.size }));
   }
 
+  // Strategy Settings panel refs + saved state
+  const blockRefs      = useRef<Record<number, HTMLDivElement | null>>({});
+  const [settingsSaved, setSettingsSaved] = useState(false);
+
+  // Macro Strategy popup state
+  type MacroPopupStep = "hidden" | "ask" | "name" | "saved";
+  const [macroPopup, setMacroPopup]           = useState<MacroPopupStep>("hidden");
+  const [macroName, setMacroName]             = useState("");
+  const [macroStrategies, setMacroStrategies] = useState<MacroStrategy[]>([]);
+  const macroIdRef                            = useRef(0);
+
+  // Macro Library panel state
+  const [showMacros, setShowMacros]           = useState(false);
+  const [macroLibTab, setMacroLibTab]         = useState("All Macros");
+  const [optionHistory, setOptionHistory]     = useState<OptionHistory[]>([]);
+  const optionHistIdRef                       = useRef(0);
+
+  function defaultMacroName() {
+    const cats = [...new Set(droppedNodes.map(n => {
+      if (n.label.includes("Sentiment") || n.label.includes("Social")) return "Sentiment";
+      if (n.label.includes("Market") || n.label.includes("Data")) return "Market";
+      if (n.label.includes("Strategy") || n.label.includes("Execution")) return "Momentum";
+      if (n.label.includes("Risk")) return "Conservative";
+      return "Adaptive";
+    }))];
+    const prefix = cats[0] ?? "Dolphin";
+    return `${prefix} Strategy #${macroIdRef.current + 1}`;
+  }
+
+  function saveMacro() {
+    const name = macroName.trim() || defaultMacroName();
+    const snap: MacroStrategy = {
+      id: ++macroIdRef.current,
+      name,
+      createdAt: Date.now(),
+      options: droppedNodes.map(n => ({
+        label: n.label, sub: n.sub, accent: n.accent, icon: n.icon,
+        config: n.config.map(f => ({ label: f.label, value: f.value })),
+      })),
+      summary: `${droppedNodes.length} module${droppedNodes.length !== 1 ? "s" : ""}: ${droppedNodes.map(n => n.label).join(", ")}`,
+    };
+    setMacroStrategies(prev => [snap, ...prev]);
+    setMacroPopup("saved");
+    setTimeout(() => setMacroPopup("hidden"), 2200);
+  }
+
+  function saveOptionHistory(nodes: DroppedNode[]) {
+    if (nodes.length === 0) return;
+    const now = Date.now();
+    setOptionHistory(prev => {
+      let updated = [...prev];
+      for (const n of nodes) {
+        const idx = updated.findIndex(h => h.type === n.label);
+        const entry: OptionHistory = {
+          id: idx >= 0 ? updated[idx].id : ++optionHistIdRef.current,
+          type: n.label,
+          config: n.config.map(f => ({ label: f.label, value: f.value })),
+          updatedAt: now,
+        };
+        if (idx >= 0) { updated[idx] = entry; }
+        else           { updated = [entry, ...updated]; }
+      }
+      return updated;
+    });
+  }
+
   // ── Node interactions ─────────────────────────────────────────────────────
   function onNodeClick(e: React.MouseEvent, uid: number) {
     e.stopPropagation();
     setSelUid(uid);
+    setTimeout(() => {
+      blockRefs.current[uid]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 0);
   }
 
   function updateConfig(uid: number, fieldLabel: string, val: string) {
@@ -661,6 +853,23 @@ export default function Canvas() {
               border: `1px solid ${showPortfolio ? "#22d3ee66" : "#22d3ee33"}`,
               transition: "all 0.15s ease",
             }}>Portfolio</button>
+          <button
+            onClick={() => setShowMacros(p => !p)}
+            className="px-3 py-1 text-xs rounded font-mono"
+            style={{
+              position: "relative",
+              color: showMacros ? "#fff" : "#c084fc",
+              background: showMacros ? "#1e0a3a" : "transparent",
+              border: `1px solid ${showMacros ? "#a855f766" : "#a855f733"}`,
+              transition: "all 0.15s ease",
+            }}>
+            Macros
+            {macroStrategies.length > 0 && (
+              <span style={{ position: "absolute", top: -5, right: -5, background: "#7c3aed", color: "#fff", fontSize: 8, fontFamily: "monospace", fontWeight: 700, borderRadius: 999, width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {macroStrategies.length}
+              </span>
+            )}
+          </button>
           <button className="px-3 py-1 text-xs rounded" style={{ color: "#c084fc", border: "1px solid #3b1f6e" }}>Share</button>
           <button className="px-3 py-1 text-xs rounded font-medium"
             style={{ background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "#fff" }}>Deploy</button>
@@ -984,7 +1193,7 @@ export default function Canvas() {
                   </div>
 
                   {/* Event cards */}
-                  <div style={{ overflowY: "auto", flex: 1, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+                  <div className="custom-scrollbar" style={{ overflowY: "auto", flex: 1, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
                     {filteredEvents.map(ev => {
                       const isAdded = selectedEvents.includes(ev.eventId);
                       const accent  = catAccent[ev.category] ?? "#8b5cf6";
@@ -1115,7 +1324,7 @@ export default function Canvas() {
               </div>
 
               {/* Event list */}
-              <div style={{ overflowY: "auto", flex: 1 }}>
+              <div className="custom-scrollbar" style={{ overflowY: "auto", flex: 1 }}>
                 {selectedEvents.map(evId => {
                   const ev = mockEvents.find(e => e.eventId === evId);
                   if (!ev) return null;
@@ -1168,13 +1377,20 @@ export default function Canvas() {
 
           {/* ── AI Market Analysis floating window ── */}
           {showAnalysis && (
+            analysisMinimized ? (
+              <div onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setAnalysisMinimized(false); }}
+                style={{ position: "absolute", left: analysisPos.x, top: analysisPos.y, zIndex: 50, cursor: "pointer", userSelect: "none", display: "inline-flex", alignItems: "center", gap: 8, background: "#0d0320", border: "1px solid #2d1b4e", borderRadius: 20, padding: "5px 12px 5px 10px", boxShadow: "0 4px 20px #00000088, 0 0 30px #7c3aed18" }}>
+                <span style={{ fontSize: 10, color: "#c084fc", fontFamily: "monospace" }}>▢</span>
+                <span style={{ fontSize: 10, color: "#d4c4f0", fontFamily: "monospace" }}>AI Market Analysis</span>
+                <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setShowAnalysis(false); }} style={{ marginLeft: 4, color: "#4a3060", background: "transparent", border: "none", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}>✕</button>
+              </div>
+            ) : (
             <div
               onMouseDown={e => e.stopPropagation()}
               onClick={e => e.stopPropagation()}
               style={{
-                position: "absolute", left: "50%", top: 80,
-                transform: "translateX(-50%)",
-                width: 400,
+                position: "absolute", left: analysisPos.x, top: analysisPos.y,
+                width: analysisSize.width, height: analysisSize.height,
                 zIndex: 50,
                 display: "flex", flexDirection: "column",
                 background: "#08010e",
@@ -1184,43 +1400,32 @@ export default function Canvas() {
                 overflow: "hidden",
               }}
             >
-              {/* Header */}
-              <div style={{
-                padding: "12px 14px 10px",
-                borderBottom: "1px solid #160930",
-                flexShrink: 0,
-                background: "linear-gradient(180deg, #0d0320 0%, #09010f 100%)",
-                display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8,
-              }}>
+              {/* Header — drag handle */}
+              <div
+                onMouseDown={analysisHeaderMouseDown}
+                style={{ padding: "12px 14px 10px", borderBottom: "1px solid #160930", flexShrink: 0, cursor: "grab", userSelect: "none", background: "linear-gradient(180deg, #0d0320 0%, #09010f 100%)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}
+              >
                 <div>
-                  <div style={{ fontSize: 11, color: "#c084fc", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 600 }}>
-                    AI Market Analysis
-                  </div>
-                  <div style={{ fontSize: 10, color: "#4a3060", fontFamily: "monospace", marginTop: 3 }}>
-                    Tradable outcomes generated from selected events
-                  </div>
+                  <div style={{ fontSize: 11, color: "#c084fc", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 600 }}>AI Market Analysis</div>
+                  <div style={{ fontSize: 10, color: "#4a3060", fontFamily: "monospace", marginTop: 3 }}>Tradable outcomes generated from selected events</div>
                 </div>
-                <button
-                  onMouseDown={e => e.stopPropagation()}
-                  onClick={e => { e.stopPropagation(); setShowAnalysis(false); }}
-                  style={{
-                    width: 22, height: 22, borderRadius: 5, flexShrink: 0,
-                    border: "1px solid #2d1b4e", color: "#6b4d90",
-                    background: "transparent", cursor: "pointer",
-                    fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center",
-                  }}
-                >✕</button>
+                <div onMouseDown={e => e.stopPropagation()} style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <button onClick={e => { e.stopPropagation(); setAnalysisMinimized(true); }}
+                    style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid #2d1b4e", color: "#6b4d90", background: "transparent", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>_</button>
+                  <button onClick={e => { e.stopPropagation(); setShowAnalysis(false); }}
+                    style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid #2d1b4e", color: "#6b4d90", background: "transparent", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                </div>
               </div>
 
               {/* Card list */}
-              <div style={{ overflowY: "auto", maxHeight: 440, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="custom-scrollbar" style={{ overflowY: "auto", flex: 1, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
                 {mockMarketAnalyses.map(ma => {
                   const isSel = selectedMA?.id === ma.id;
                   const evSign = ma.expectedValue >= 0 ? "+" : "";
                   return (
                     <div
                       key={ma.id}
-                      onClick={e => { e.stopPropagation(); if (isSel) { setShowDetail(false); setSelectedMA(null); } else { setSelectedMA(ma); setShowDetail(true); setChatMessages([]); setChatInput(""); setOrderSide(ma.outcome); setOrderAmount("100"); setOrderPlaced(false); } }}
+                      onClick={e => { e.stopPropagation(); if (isSel) { setShowDetail(false); setSelectedMA(null); } else { setSelectedMA(ma); setShowDetail(true); setDetailMinimized(false); setChatMessages([]); setChatInput(""); setOrderSide(ma.outcome); setOrderAmount("100"); setOrderPlaced(false); } }}
                       style={{
                         background: isSel ? "#110330" : "#0c0420",
                         border: `1px solid ${isSel ? "#7c3aed88" : "#2d1b4e"}`,
@@ -1229,65 +1434,66 @@ export default function Canvas() {
                         transition: "border-color 0.2s, background 0.2s, box-shadow 0.2s",
                       }}
                     >
-                      {/* Row 1: event title */}
-                      <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.06em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-                        {ma.eventTitle}
-                      </div>
-                      {/* Row 2: market title */}
-                      <div style={{ fontSize: 11, color: "#d4c4f0", lineHeight: 1.4, marginBottom: 6, maxHeight: "2.8em", overflow: "hidden" }}>
-                        {ma.marketTitle}
-                      </div>
-                      {/* Row 3: outcome + action + confidence */}
+                      <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.06em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ma.eventTitle}</div>
+                      <div style={{ fontSize: 11, color: "#d4c4f0", lineHeight: 1.4, marginBottom: 6, maxHeight: "2.8em", overflow: "hidden" }}>{ma.marketTitle}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5, flexWrap: "wrap" }}>
-                        <span style={{
-                          fontSize: 10, fontFamily: "monospace", fontWeight: 600, borderRadius: 3, padding: "1px 6px",
-                          color: ma.outcome === "YES" ? "#10b981" : "#fb923c",
-                          background: ma.outcome === "YES" ? "#10b98118" : "#fb923c18",
-                          border: `1px solid ${ma.outcome === "YES" ? "#10b98133" : "#fb923c33"}`,
-                        }}>
-                          {ma.outcome} {ma.price}¢
-                        </span>
-                        <span style={{
-                          fontSize: 10, fontFamily: "monospace", fontWeight: 600, borderRadius: 3, padding: "1px 7px",
-                          color: actionColor[ma.suggestedAction],
-                          background: actionColor[ma.suggestedAction] + "18",
-                          border: `1px solid ${actionColor[ma.suggestedAction]}33`,
-                        }}>
-                          {ma.suggestedAction}
-                        </span>
-                        <span style={{ fontSize: 9, color: "#6b4d90", fontFamily: "monospace", marginLeft: "auto" }}>
-                          ⬥ {ma.confidence}% conf
-                        </span>
+                        <span style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 600, borderRadius: 3, padding: "1px 6px", color: ma.outcome === "YES" ? "#10b981" : "#fb923c", background: ma.outcome === "YES" ? "#10b98118" : "#fb923c18", border: `1px solid ${ma.outcome === "YES" ? "#10b98133" : "#fb923c33"}` }}>{ma.outcome} {ma.price}¢</span>
+                        <span style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 600, borderRadius: 3, padding: "1px 7px", color: actionColor[ma.suggestedAction], background: actionColor[ma.suggestedAction] + "18", border: `1px solid ${actionColor[ma.suggestedAction]}33` }}>{ma.suggestedAction}</span>
+                        <span style={{ fontSize: 9, color: "#6b4d90", fontFamily: "monospace", marginLeft: "auto" }}>⬥ {ma.confidence}% conf</span>
                       </div>
-                      {/* Row 4: EV + risk */}
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                        <span style={{ fontSize: 9, fontFamily: "monospace", color: ma.expectedValue >= 0 ? "#10b981" : "#ef4444" }}>
-                          EV {evSign}{(ma.expectedValue * 100).toFixed(0)}%
-                        </span>
-                        <span style={{ fontSize: 9, fontFamily: "monospace", color: riskColor[ma.riskLevel] }}>
-                          Risk: {ma.riskLevel}
-                        </span>
+                        <span style={{ fontSize: 9, fontFamily: "monospace", color: ma.expectedValue >= 0 ? "#10b981" : "#ef4444" }}>EV {evSign}{(ma.expectedValue * 100).toFixed(0)}%</span>
+                        <span style={{ fontSize: 9, fontFamily: "monospace", color: riskColor[ma.riskLevel] }}>Risk: {ma.riskLevel}</span>
                       </div>
-                      {/* Row 5: reason */}
-                      <div style={{ fontSize: 10, color: "#4a3060", lineHeight: 1.45, maxHeight: "2.9em", overflow: "hidden" }}>
-                        {ma.reason}
-                      </div>
+                      <div style={{ fontSize: 10, color: "#4a3060", lineHeight: 1.45, maxHeight: "2.9em", overflow: "hidden" }}>{ma.reason}</div>
                     </div>
                   );
                 })}
               </div>
+
+              {/* Resize handle */}
+              <div onMouseDown={makeResizeHandler(analysisSize, setAnalysisSize, 360, 300)}
+                style={{ position: "absolute", bottom: 0, right: 0, width: 18, height: 18, cursor: "nwse-resize", display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: 4 }}>
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><line x1="8" y1="2" x2="2" y2="8" stroke="#3b2060" strokeWidth="1.5" strokeLinecap="round"/><line x1="8" y1="6" x2="6" y2="8" stroke="#3b2060" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              </div>
             </div>
+            )
           )}
 
           {/* ── Analysis Detail Window ── */}
           {showDetail && selectedMA && (
+            detailMinimized ? (
+              /* Minimized pill */
+              <div
+                onMouseDown={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); setDetailMinimized(false); }}
+                style={{
+                  position: "absolute", left: detailPos.x, top: detailPos.y,
+                  zIndex: 60, cursor: "pointer", userSelect: "none",
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                  background: "#100228", border: "1px solid #3b1f6e",
+                  borderRadius: 20, padding: "5px 12px 5px 10px",
+                  boxShadow: "0 4px 20px #00000088, 0 0 30px #7c3aed18",
+                }}
+              >
+                <span style={{ fontSize: 10, color: "#c084fc", fontFamily: "monospace" }}>▢</span>
+                <span style={{ fontSize: 10, color: "#d4c4f0", fontFamily: "monospace", maxWidth: 260, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                  Analysis Detail · {selectedMA.marketTitle}
+                </span>
+                <button
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={e => { e.stopPropagation(); setShowDetail(false); setSelectedMA(null); }}
+                  style={{ marginLeft: 4, color: "#4a3060", background: "transparent", border: "none", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}
+                >✕</button>
+              </div>
+            ) : (
             <div
               onMouseDown={e => e.stopPropagation()}
               onClick={e => e.stopPropagation()}
               style={{
-                position: "absolute", left: "50%", top: "50%",
-                transform: "translate(4%, -50%)",
-                width: 420, maxHeight: "calc(100% - 48px)",
+                position: "absolute",
+                left: detailPos.x, top: detailPos.y,
+                width: detailSize.width, height: detailSize.height,
                 zIndex: 60,
                 display: "flex", flexDirection: "column",
                 background: "#08010e",
@@ -1297,19 +1503,23 @@ export default function Canvas() {
                 overflow: "hidden",
               }}
             >
-              {/* Header */}
-              <div style={{
-                padding: "11px 14px 9px",
-                borderBottom: "1px solid #1a0d30",
-                flexShrink: 0,
-                background: "linear-gradient(180deg, #100228 0%, #09010f 100%)",
-                display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8,
-              }}>
-                <div style={{ minWidth: 0 }}>
+              {/* Header — drag handle */}
+              <div
+                onMouseDown={detailHeaderMouseDown}
+                style={{
+                  padding: "11px 14px 9px",
+                  borderBottom: "1px solid #1a0d30",
+                  flexShrink: 0,
+                  cursor: "grab", userSelect: "none",
+                  background: "linear-gradient(180deg, #100228 0%, #09010f 100%)",
+                  display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8,
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", textTransform: "uppercase", marginBottom: 3 }}>
                     {selectedMA.eventTitle}
                   </div>
-                  <div style={{ fontSize: 12, color: "#d4c4f0", lineHeight: 1.4, fontWeight: 500 }}>
+                  <div style={{ fontSize: 12, color: "#d4c4f0", lineHeight: 1.4, fontWeight: 500, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
                     {selectedMA.marketTitle}
                   </div>
                   <div style={{ display: "flex", gap: 5, marginTop: 7, flexWrap: "wrap" }}>
@@ -1331,20 +1541,21 @@ export default function Canvas() {
                     </span>
                   </div>
                 </div>
-                <button
-                  onMouseDown={e => e.stopPropagation()}
-                  onClick={e => { e.stopPropagation(); setShowDetail(false); setSelectedMA(null); }}
-                  style={{
-                    width: 22, height: 22, borderRadius: 5, flexShrink: 0,
-                    border: "1px solid #2d1b4e", color: "#6b4d90",
-                    background: "transparent", cursor: "pointer",
-                    fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center",
-                  }}
-                >✕</button>
+                {/* Window controls */}
+                <div onMouseDown={e => e.stopPropagation()} style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <button
+                    onClick={e => { e.stopPropagation(); setDetailMinimized(true); }}
+                    style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid #2d1b4e", color: "#6b4d90", background: "transparent", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}
+                  >_</button>
+                  <button
+                    onClick={e => { e.stopPropagation(); setShowDetail(false); setSelectedMA(null); }}
+                    style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid #2d1b4e", color: "#6b4d90", background: "transparent", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >✕</button>
+                </div>
               </div>
 
               {/* Body */}
-              <div style={{ overflowY: "auto", flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="custom-scrollbar" style={{ overflowY: "auto", flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
 
                 {/* Stats row */}
                 <div style={{ display: "flex", gap: 8 }}>
@@ -1376,7 +1587,7 @@ export default function Canvas() {
 
                   {/* Message list */}
                   {chatMessages.length > 0 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto" }}>
+                    <div className="custom-scrollbar" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto" }}>
                       {chatMessages.map((msg, i) => (
                         <div key={i} style={{
                           display: "flex",
@@ -1508,7 +1719,23 @@ export default function Canvas() {
                 </div>
 
               </div>
+
+              {/* Resize handle */}
+              <div
+                onMouseDown={onDetailResizeMouseDown}
+                style={{
+                  position: "absolute", bottom: 0, right: 0,
+                  width: 18, height: 18, cursor: "nwse-resize",
+                  display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: 4,
+                }}
+              >
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                  <line x1="8" y1="2" x2="2" y2="8" stroke="#3b2060" strokeWidth="1.5" strokeLinecap="round"/>
+                  <line x1="8" y1="6" x2="6" y2="8" stroke="#3b2060" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </div>
             </div>
+            )
           )}
 
           {/* ── Portfolio Window ── */}
@@ -1526,13 +1753,23 @@ export default function Canvas() {
             const largest = openPositions.reduce<PortfolioPosition | null>((a, b) => (!a || b.size > a.size) ? b : a, null);
             const portfolioRisk: RiskLevel = balance.used / balance.total > 0.6 ? "High" : balance.used / balance.total > 0.3 ? "Medium" : "Low";
 
+            if (portfolioMinimized) return (
+              <div onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setPortfolioMinimized(false); }}
+                style={{ position: "absolute", left: portfolioPos.x, top: portfolioPos.y, zIndex: 55, cursor: "pointer", userSelect: "none", display: "inline-flex", alignItems: "center", gap: 8, background: "#040f0f", border: "1px solid #163a3a", borderRadius: 20, padding: "5px 12px 5px 10px", boxShadow: "0 4px 20px #00000088, 0 0 30px #22d3ee0e" }}>
+                <span style={{ fontSize: 10, color: "#22d3ee", fontFamily: "monospace" }}>▢</span>
+                <span style={{ fontSize: 10, color: "#d4c4f0", fontFamily: "monospace" }}>Portfolio</span>
+                {openPositions.length > 0 && <span style={{ fontSize: 9, color: "#fff", background: "#22d3ee", borderRadius: 10, padding: "1px 6px", fontFamily: "monospace" }}>{openPositions.length}</span>}
+                <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setShowPortfolio(false); }} style={{ marginLeft: 4, color: "#2a5555", background: "transparent", border: "none", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}>✕</button>
+              </div>
+            );
+
             return (
               <div
                 onMouseDown={e => e.stopPropagation()}
                 onClick={e => e.stopPropagation()}
                 style={{
-                  position: "absolute", right: 16, top: 16,
-                  width: 380, maxHeight: "calc(100% - 32px)",
+                  position: "absolute", left: portfolioPos.x, top: portfolioPos.y,
+                  width: portfolioSize.width, height: portfolioSize.height,
                   zIndex: 55,
                   display: "flex", flexDirection: "column",
                   background: "#08010e",
@@ -1542,13 +1779,11 @@ export default function Canvas() {
                   overflow: "hidden",
                 }}
               >
-                {/* Header */}
-                <div style={{
-                  padding: "10px 14px 9px", flexShrink: 0,
-                  borderBottom: "1px solid #0e2828",
-                  background: "linear-gradient(180deg, #040f0f 0%, #09010f 100%)",
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                }}>
+                {/* Header — drag handle */}
+                <div
+                  onMouseDown={portfolioHeaderMouseDown}
+                  style={{ padding: "10px 14px 9px", flexShrink: 0, borderBottom: "1px solid #0e2828", background: "linear-gradient(180deg, #040f0f 0%, #09010f 100%)", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "grab", userSelect: "none" }}
+                >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 11, color: "#22d3ee", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 600 }}>Portfolio</span>
                     {openPositions.length > 0 && (
@@ -1557,11 +1792,12 @@ export default function Canvas() {
                       </span>
                     )}
                   </div>
-                  <button
-                    onMouseDown={e => e.stopPropagation()}
-                    onClick={e => { e.stopPropagation(); setShowPortfolio(false); }}
-                    style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid #163a3a", color: "#22d3ee66", background: "transparent", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}
-                  >✕</button>
+                  <div onMouseDown={e => e.stopPropagation()} style={{ display: "flex", gap: 4 }}>
+                    <button onClick={e => { e.stopPropagation(); setPortfolioMinimized(true); }}
+                      style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid #163a3a", color: "#22d3ee66", background: "transparent", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>_</button>
+                    <button onClick={e => { e.stopPropagation(); setShowPortfolio(false); }}
+                      style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid #163a3a", color: "#22d3ee66", background: "transparent", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                  </div>
                 </div>
 
                 {/* Tab bar */}
@@ -1583,7 +1819,7 @@ export default function Canvas() {
                 </div>
 
                 {/* Body */}
-                <div style={{ overflowY: "auto", flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div className="custom-scrollbar" style={{ overflowY: "auto", flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
 
                   {/* ── Overview ── */}
                   {portfolioTab === "overview" && (
@@ -1819,117 +2055,395 @@ export default function Canvas() {
                   )}
 
                 </div>
+
+                {/* Resize handle */}
+                <div onMouseDown={makeResizeHandler(portfolioSize, setPortfolioSize, 360, 280)}
+                  style={{ position: "absolute", bottom: 0, right: 0, width: 18, height: 18, cursor: "nwse-resize", display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: 4 }}>
+                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><line x1="8" y1="2" x2="2" y2="8" stroke="#163a3a" strokeWidth="1.5" strokeLinecap="round"/><line x1="8" y1="6" x2="6" y2="8" stroke="#163a3a" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Macro Library Panel ── */}
+          {showMacros && (() => {
+            const moduleTypes = leftModules.map(m => m.label);
+            const tabIsModule = moduleTypes.includes(macroLibTab);
+            const visibleMacros = macroLibTab === "All Macros" || macroLibTab === "Strategy Macros" ? macroStrategies : [];
+            const visibleHist   = macroLibTab === "All Macros" ? optionHistory
+              : tabIsModule ? optionHistory.filter(h => h.type === macroLibTab) : [];
+
+            function loadMacro(macro: MacroStrategy) {
+              setDroppedNodes(macro.options.map((o, i) => {
+                const mod = leftModules.find(m => m.label === o.label);
+                const angle = (i / 7) * Math.PI * 2 - Math.PI / 2;
+                const config = o.config.map(c => {
+                  const def = (defaultConfigs[o.label] ?? []).find(f => f.label === c.label);
+                  return def ? { ...def, value: c.value } : { label: c.label, type: "text" as const, value: c.value };
+                });
+                return {
+                  uid: ++uidRef.current, label: o.label, sub: o.sub, accent: o.accent, icon: o.icon,
+                  x: Math.round(Math.cos(angle) * 230), y: Math.round(Math.sin(angle) * 230),
+                  config,
+                };
+              }));
+              setCenterMsg("Macro loaded.");
+              if (msgTimer.current) clearTimeout(msgTimer.current);
+              msgTimer.current = setTimeout(() => setCenterMsg(null), 2000);
+            }
+
+            return (
+              <div
+                style={{
+                  position: "absolute", left: 80, top: 80, width: 560, height: 460, zIndex: 50,
+                  background: "#09010f", border: "1px solid #2d1b4e", borderRadius: 10,
+                  display: "flex", flexDirection: "column",
+                  boxShadow: "0 8px 48px #000a, 0 0 0 1px #7c3aed11",
+                  overflow: "hidden",
+                }}
+              >
+                {/* Panel header */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px 9px", borderBottom: "1px solid #1a0d30", flexShrink: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ color: "#a855f7", fontSize: 14 }}>◈</span>
+                    <span style={{ fontSize: 11, color: "#d4c4f0", fontFamily: "monospace", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.14em" }}>Macro Library</span>
+                    <span style={{ fontSize: 10, color: "#4a3060", fontFamily: "monospace" }}>
+                      {macroStrategies.length} strateg{macroStrategies.length === 1 ? "y" : "ies"} · {optionHistory.length} config{optionHistory.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <button onClick={() => setShowMacros(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#4a3060", fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
+                </div>
+
+                {/* Body */}
+                <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+
+                  {/* Left: category tabs */}
+                  <div className="custom-scrollbar" style={{ width: 150, flexShrink: 0, borderRight: "1px solid #1a0d30", overflowY: "auto", padding: "8px 0" }}>
+                    {["All Macros", "Strategy Macros", ...moduleTypes].map(cat => {
+                      const isActive = macroLibTab === cat;
+                      const count = cat === "All Macros"
+                        ? macroStrategies.length + optionHistory.length
+                        : cat === "Strategy Macros"
+                        ? macroStrategies.length
+                        : optionHistory.filter(h => h.type === cat).length;
+                      const isSep = cat === "Strategy Macros" || cat === moduleTypes[0];
+                      return (
+                        <div key={cat}>
+                          {isSep && <div style={{ height: 1, background: "#1a0d30", margin: "5px 10px" }} />}
+                          <button
+                            onClick={() => setMacroLibTab(cat)}
+                            style={{
+                              width: "100%", textAlign: "left", padding: "6px 12px", fontSize: 10,
+                              fontFamily: "monospace", background: isActive ? "#7c3aed18" : "transparent",
+                              color: isActive ? "#c084fc" : "#6b4d90", border: "none",
+                              borderLeft: `2px solid ${isActive ? "#7c3aed" : "transparent"}`,
+                              cursor: "pointer", display: "flex", justifyContent: "space-between",
+                              alignItems: "center", gap: 4, transition: "all 0.12s ease",
+                            }}
+                          >
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cat}</span>
+                            {count > 0 && (
+                              <span style={{ flexShrink: 0, fontSize: 9, background: isActive ? "#7c3aed33" : "#1a0d30", color: isActive ? "#c084fc" : "#3b2060", borderRadius: 999, padding: "0 5px", height: 15, display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 15 }}>
+                                {count}
+                              </span>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Right: content */}
+                  <div className="custom-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+
+                    {/* Empty state */}
+                    {visibleMacros.length === 0 && visibleHist.length === 0 && (
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: "32px 0" }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#7c3aed12", border: "1px solid #7c3aed22", display: "flex", alignItems: "center", justifyContent: "center", color: "#3b2060", fontSize: 14 }}>◈</div>
+                        <div style={{ fontSize: 11, color: "#3b2060", fontFamily: "monospace", textAlign: "center", lineHeight: 1.6 }}>
+                          {macroLibTab === "Strategy Macros"
+                            ? "No macros saved yet.\nClick Done in Strategy Settings."
+                            : `No config history for\n${macroLibTab}.`}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Strategy macro cards */}
+                    {visibleMacros.length > 0 && (
+                      <>
+                        {macroLibTab === "All Macros" && (
+                          <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 2 }}>Strategy Macros</div>
+                        )}
+                        {visibleMacros.map(macro => (
+                          <div key={macro.id} style={{ background: "#0d0220", border: "1px solid #2d1b4e", borderRadius: 8, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, color: "#d4c4f0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{macro.name}</div>
+                                <div style={{ fontSize: 10, color: "#6b4d90", fontFamily: "monospace", marginTop: 2 }}>{macro.summary}</div>
+                              </div>
+                              <div style={{ fontSize: 9, color: "#3b2060", fontFamily: "monospace", flexShrink: 0 }}>
+                                {new Date(macro.createdAt).toLocaleDateString()}
+                              </div>
+                            </div>
+                            {/* Module chips */}
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                              {macro.options.map(o => {
+                                const mod = leftModules.find(m => m.label === o.label);
+                                return (
+                                  <span key={o.label} style={{ fontSize: 9, fontFamily: "monospace", padding: "1px 7px", borderRadius: 999, background: `${mod?.accent ?? "#8b5cf6"}18`, border: `1px solid ${mod?.accent ?? "#8b5cf6"}33`, color: mod?.accent ?? "#8b5cf6" }}>
+                                    {o.icon} {o.label.split(" ")[0]}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button
+                                onClick={() => loadMacro(macro)}
+                                style={{ flex: 1, padding: "5px 0", borderRadius: 5, fontSize: 10, fontFamily: "monospace", background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "#fff", border: "none", cursor: "pointer" }}>
+                                Load
+                              </button>
+                              <button
+                                onClick={() => setMacroStrategies(prev => prev.filter(m => m.id !== macro.id))}
+                                style={{ padding: "5px 10px", borderRadius: 5, fontSize: 10, fontFamily: "monospace", background: "transparent", color: "#6b4d90", border: "1px solid #2d1b4e", cursor: "pointer" }}>
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Option history cards */}
+                    {visibleHist.length > 0 && (
+                      <>
+                        {macroLibTab === "All Macros" && (
+                          <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.1em", marginTop: visibleMacros.length > 0 ? 6 : 0, marginBottom: 2 }}>Config History</div>
+                        )}
+                        {visibleHist.map(hist => {
+                          const mod = leftModules.find(m => m.label === hist.type);
+                          return (
+                            <div
+                              key={hist.id}
+                              draggable
+                              onDragStart={() => { dragId.current = `optionhist:${hist.id}`; }}
+                              style={{ background: "#0d0220", border: `1px solid ${mod?.accent ?? "#8b5cf6"}22`, borderRadius: 8, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 6, cursor: "grab" }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ color: mod?.accent ?? "#8b5cf6", fontSize: 13 }}>{mod?.icon ?? "◈"}</span>
+                                  <div>
+                                    <div style={{ fontSize: 11, color: "#d4c4f0", fontWeight: 500 }}>{hist.type}</div>
+                                    <div style={{ fontSize: 9, color: "#3b2060", fontFamily: "monospace", marginTop: 1 }}>
+                                      Updated {new Date(hist.updatedAt).toLocaleDateString()}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace" }}>drag to load</span>
+                                  <button
+                                    onClick={() => setOptionHistory(prev => prev.filter(h => h.id !== hist.id))}
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: "#3b2060", fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button>
+                                </div>
+                              </div>
+                              {/* Config values */}
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                {hist.config.map(c => (
+                                  <span key={c.label} style={{ fontSize: 9, fontFamily: "monospace", padding: "1px 6px", borderRadius: 4, background: "#1a0d30", border: "1px solid #2d1b4e", color: "#8b5cf6" }}>
+                                    {c.label}: <span style={{ color: "#c084fc" }}>{c.value}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+
+                  </div>
+                </div>
               </div>
             );
           })()}
 
         </main>
 
-        {/* ── Right Panel ── */}
+        {/* ── Right Panel — Strategy Settings ── */}
         <aside className="flex-shrink-0 w-64 flex flex-col overflow-hidden"
           style={{ borderLeft: "1px solid #2d1b4e", background: "#09010f" }}>
 
-          {/* Node editor */}
-          {selNode && (
-            <div className="overflow-y-auto px-4 pt-4 pb-6 flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-sm"
-                  style={{ background: `${selNode.accent}18`, border: `1px solid ${selNode.accent}44`, color: selNode.accent }}>
-                  {selNode.icon}
-                </div>
-                <div>
-                  <div className="text-sm font-medium" style={{ color: "#e2d4f0" }}>{selNode.label}</div>
-                  <div className="text-xs" style={{ color: "#4a3060" }}>{selNode.sub}</div>
-                </div>
+          {/* Header */}
+          <div style={{ padding: "12px 16px 10px", borderBottom: "1px solid #1a0d30", flexShrink: 0 }}>
+            <div style={{ fontSize: 11, color: "#c084fc", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 600 }}>
+              Strategy Settings
+            </div>
+            <div style={{ fontSize: 10, color: "#4a3060", fontFamily: "monospace", marginTop: 3 }}>
+              {droppedNodes.length === 0
+                ? "No modules added yet"
+                : `${droppedNodes.length} module${droppedNodes.length !== 1 ? "s" : ""} configured`}
+            </div>
+          </div>
+
+          {/* Empty state */}
+          {droppedNodes.length === 0 && (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 20px", gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: "#7c3aed15", border: "1px solid #7c3aed33", display: "flex", alignItems: "center", justifyContent: "center", color: "#a855f7", fontSize: 16 }}>◈</div>
+              <div style={{ fontSize: 11, color: "#3b2060", fontFamily: "monospace", textAlign: "center", lineHeight: 1.6 }}>
+                Drag modules onto<br />Dolphin AI to build<br />your strategy
               </div>
-
-              <p className="text-xs font-mono uppercase" style={{ color: "#3b2060" }}>Configuration</p>
-
-              <div className="flex flex-col gap-3">
-                {selNode.config.map(f => (
-                  <div key={f.label}>
-                    {f.type === "range" ? (
-                      <>
-                        <div className="flex justify-between text-xs mb-1">
-                          <span style={{ color: "#6b4d90" }}>{f.label}</span>
-                          <span className="font-mono" style={{ color: "#c084fc" }}>{parseFloat(f.value).toFixed(2)}</span>
-                        </div>
-                        <input type="range" min="0" max="1" step="0.01" value={f.value}
-                          onChange={e => updateConfig(selNode.uid, f.label, e.target.value)}
-                          style={{ width: "100%", accentColor: selNode.accent, cursor: "pointer" }} />
-                      </>
-                    ) : (
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs flex-shrink-0" style={{ color: "#6b4d90" }}>{f.label}</span>
-                        {f.type === "select" ? (
-                          <select value={f.value}
-                            onChange={e => updateConfig(selNode.uid, f.label, e.target.value)}
-                            style={{ background: "#1a0d30", color: "#c084fc", border: "1px solid #2d1b4e", borderRadius: 4, padding: "2px 4px", fontSize: 11, fontFamily: "monospace", outline: "none", cursor: "pointer" }}>
-                            {f.options?.map(opt => <option key={opt} value={opt} style={{ background: "#1a0d30" }}>{opt}</option>)}
-                          </select>
-                        ) : (
-                          <input type="text" value={f.value}
-                            onChange={e => updateConfig(selNode.uid, f.label, e.target.value)}
-                            style={{ background: "#1a0d30", color: "#c084fc", border: "1px solid #2d1b4e", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontFamily: "monospace", width: 90, outline: "none" }} />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <button className="w-full py-2 rounded-lg text-xs font-medium"
-                style={{ background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "#fff", cursor: "pointer" }}
-                onClick={() => setSelUid(null)}>Done</button>
-              <button className="w-full py-1.5 rounded-lg text-xs"
-                style={{ color: "#6b4d90", border: "1px solid #2d1b4e", cursor: "pointer", background: "transparent" }}
-                onClick={() => removeNode(selNode.uid)}>Remove from strategy</button>
             </div>
           )}
 
-          {/* Idle state */}
-          {!selNode && (
-            <div className="overflow-y-auto px-4 pt-4 pb-6 flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-sm"
-                  style={{ background: "#7c3aed15", border: "1px solid #7c3aed33", color: "#a855f7" }}>◈</div>
-                <div>
-                  <div className="text-sm font-medium" style={{ color: "#e2d4f0" }}>Strategy Builder</div>
-                  <div className="text-xs" style={{ color: "#4a3060" }}>
-                    {droppedNodes.length} module{droppedNodes.length !== 1 ? "s" : ""} active
-                  </div>
-                </div>
-              </div>
+          {/* Config blocks */}
+          {droppedNodes.length > 0 && (
+            <div className="custom-scrollbar" style={{ overflowY: "auto", flex: 1, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+              {droppedNodes.map(node => {
+                const isSel = node.uid === selUid;
+                return (
+                  <div
+                    key={node.uid}
+                    ref={el => { blockRefs.current[node.uid] = el; }}
+                    onClick={e => { e.stopPropagation(); onNodeClick(e, node.uid); }}
+                    style={{
+                      border: `1px solid ${isSel ? node.accent + "66" : node.accent + "22"}`,
+                      background: isSel ? node.accent + "0e" : node.accent + "06",
+                      borderRadius: 8, padding: "9px 10px",
+                      cursor: "pointer",
+                      transition: "border-color 0.2s ease, background 0.2s ease",
+                      boxShadow: isSel ? `0 0 16px ${node.accent}18` : "none",
+                    }}
+                  >
+                    {/* Block header */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+                      <span style={{ color: node.accent, fontSize: 14, flexShrink: 0 }}>{node.icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: "#d4c4f0", fontWeight: 500, lineHeight: 1.3 }}>{node.label}</div>
+                        <div style={{ fontSize: 9, color: node.accent + "88", fontFamily: "monospace", marginTop: 1 }}>{node.sub}</div>
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); removeNode(node.uid); }}
+                        style={{ flexShrink: 0, color: "#3b2060", background: "transparent", border: "none", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}
+                      >✕</button>
+                    </div>
 
-              {droppedNodes.length === 0 ? (
-                <div className="text-xs font-mono text-center py-8" style={{ color: "#3b2060" }}>
-                  Drag modules onto Dolphin AI<br />to build your strategy
+                    {/* Config fields — always visible */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }} onClick={e => e.stopPropagation()}>
+                      {node.config.map(f => (
+                        <div key={f.label}>
+                          {f.type === "range" ? (
+                            <>
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                                <span style={{ fontSize: 10, color: "#6b4d90" }}>{f.label}</span>
+                                <span style={{ fontSize: 10, color: "#c084fc", fontFamily: "monospace" }}>{parseFloat(f.value).toFixed(2)}</span>
+                              </div>
+                              <input type="range" min="0" max="1" step="0.01" value={f.value}
+                                onChange={e => { updateConfig(node.uid, f.label, e.target.value); setSettingsSaved(false); }}
+                                style={{ width: "100%", accentColor: node.accent, cursor: "pointer" }} />
+                            </>
+                          ) : (
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                              <span style={{ fontSize: 10, color: "#6b4d90", flexShrink: 0, maxWidth: 80, lineHeight: 1.3 }}>{f.label}</span>
+                              {f.type === "select" ? (
+                                <select value={f.value}
+                                  onChange={e => { updateConfig(node.uid, f.label, e.target.value); setSettingsSaved(false); }}
+                                  style={{ background: "#1a0d30", color: "#c084fc", border: "1px solid #2d1b4e", borderRadius: 4, padding: "2px 4px", fontSize: 10, fontFamily: "monospace", outline: "none", cursor: "pointer", maxWidth: 100 }}>
+                                  {f.options?.map(opt => <option key={opt} value={opt} style={{ background: "#1a0d30" }}>{opt}</option>)}
+                                </select>
+                              ) : (
+                                <input type="text" value={f.value}
+                                  onChange={e => { updateConfig(node.uid, f.label, e.target.value); setSettingsSaved(false); }}
+                                  style={{ background: "#1a0d30", color: "#c084fc", border: "1px solid #2d1b4e", borderRadius: 4, padding: "2px 6px", fontSize: 10, fontFamily: "monospace", width: 76, outline: "none" }} />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Done button + Macro popup */}
+          {droppedNodes.length > 0 && (
+            <div style={{ padding: "10px 12px", flexShrink: 0, borderTop: "1px solid #1a0d30", display: "flex", flexDirection: "column", gap: 8 }}>
+
+              {/* Macro popup */}
+              {macroPopup !== "hidden" && (
+                <div style={{ background: "#0d0220", border: "1px solid #3b1f6e", borderRadius: 8, padding: "12px 12px 10px", display: "flex", flexDirection: "column", gap: 9 }}>
+
+                  {macroPopup === "ask" && (
+                    <>
+                      <div style={{ fontSize: 11, color: "#d4c4f0", lineHeight: 1.5 }}>
+                        Save this setup as a Macro Strategy?
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          onClick={() => { setMacroName(defaultMacroName()); setMacroPopup("name"); }}
+                          style={{ flex: 1, padding: "5px 0", borderRadius: 5, fontSize: 10, fontFamily: "monospace", background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "#fff", border: "none", cursor: "pointer" }}>
+                          Save as Macro
+                        </button>
+                        <button
+                          onClick={() => setMacroPopup("hidden")}
+                          style={{ flex: 1, padding: "5px 0", borderRadius: 5, fontSize: 10, fontFamily: "monospace", background: "transparent", color: "#6b4d90", border: "1px solid #2d1b4e", cursor: "pointer" }}>
+                          Not now
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {macroPopup === "name" && (
+                    <>
+                      <div style={{ fontSize: 10, color: "#8b5cf6", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.08em" }}>Name this macro</div>
+                      <input
+                        value={macroName}
+                        onChange={e => setMacroName(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") saveMacro(); }}
+                        placeholder="e.g. Crypto Momentum Macro"
+                        style={{ background: "#08010e", border: "1px solid #3b1f6e", borderRadius: 5, padding: "6px 9px", fontSize: 11, color: "#d4c4f0", fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" }}
+                      />
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          onClick={saveMacro}
+                          style={{ flex: 1, padding: "5px 0", borderRadius: 5, fontSize: 10, fontFamily: "monospace", background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "#fff", border: "none", cursor: "pointer" }}>
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setMacroPopup("hidden")}
+                          style={{ flex: 1, padding: "5px 0", borderRadius: 5, fontSize: 10, fontFamily: "monospace", background: "transparent", color: "#6b4d90", border: "1px solid #2d1b4e", cursor: "pointer" }}>
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {macroPopup === "saved" && (
+                    <div style={{ fontSize: 11, fontFamily: "monospace", textAlign: "center", padding: "4px 0", color: "#10b981" }}>
+                      ✓ Macro strategy saved.
+                    </div>
+                  )}
+
+                </div>
+              )}
+
+              {/* Settings saved / Done */}
+              {settingsSaved ? (
+                <div style={{ fontSize: 11, fontFamily: "monospace", textAlign: "center", padding: "7px 0", color: "#10b981", background: "#10b98110", border: "1px solid #10b98130", borderRadius: 6 }}>
+                  Strategy settings saved.
                 </div>
               ) : (
-                <>
-                  <p className="text-xs font-mono uppercase" style={{ color: "#3b2060" }}>Active modules</p>
-                  <div className="flex flex-col gap-1.5">
-                    {droppedNodes.map(n => (
-                      <div key={n.uid}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded"
-                        style={{ border: `1px solid ${n.accent}22`, background: `${n.accent}08`, cursor: "pointer" }}
-                        onClick={e => onNodeClick(e, n.uid)}>
-                        <span style={{ color: n.accent, fontSize: 13 }}>{n.icon}</span>
-                        <span className="text-xs" style={{ color: "#d4c4f0" }}>{n.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    className="w-full py-2 rounded-lg text-xs font-medium"
-                    style={{ background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "#fff", cursor: "pointer" }}
-                    onClick={dolphinPhase === "markets"
-                      ? () => { setShowDiscovery(true); setDiscMinimized(false); }
-                      : triggerDiscovery}
-                  >
-                    {dolphinPhase === "markets" ? "Show Events →" : "Discover Events →"}
-                  </button>
-                </>
+                <button
+                  onClick={() => {
+                    setSettingsSaved(true);
+                    setMacroPopup("ask");
+                    saveOptionHistory(droppedNodes);
+                    setTimeout(() => setSettingsSaved(false), 2500);
+                  }}
+                  style={{ width: "100%", padding: "7px 0", borderRadius: 6, fontSize: 11, fontFamily: "monospace", background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "#fff", border: "none", cursor: "pointer" }}>
+                  Done
+                </button>
               )}
+
             </div>
           )}
 
