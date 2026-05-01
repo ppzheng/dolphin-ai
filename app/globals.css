@@ -197,3 +197,62 @@ body {
 .custom-scrollbar::-webkit-scrollbar-track  { background: rgba(255,255,255,0.03); border-radius: 999px; }
 .custom-scrollbar::-webkit-scrollbar-thumb  { background: rgba(168,85,247,0.35);  border-radius: 999px; }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(168,85,247,0.65); }
+
+/* ── Light theme overrides ──────────────────────────────────────────────── */
+.theme-light .custom-scrollbar::-webkit-scrollbar-track { background: rgba(124,58,237,0.05); }
+.theme-light .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(124,58,237,0.22); }
+.theme-light .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(124,58,237,0.40); }
+
+.theme-light .dot-grid {
+  background-image: radial-gradient(circle, rgba(124,58,237,0.13) 1px, transparent 1px);
+}
+.theme-light .neon-text {
+  color: #5b21b6;
+  text-shadow: 0 0 8px rgba(124,58,237,0.22), 0 0 20px rgba(124,58,237,0.10);
+}
+.theme-light .neon-glow {
+  box-shadow: 0 0 14px rgba(124,58,237,0.18), 0 0 1px rgba(168,85,247,0.25);
+}
+.theme-light .card-surface {
+  background: linear-gradient(135deg, rgba(255,255,255,0.88) 0%, rgba(248,244,255,0.82) 100%);
+  border-color: rgba(124,58,237,0.18);
+}
+.theme-light .card-surface:hover {
+  border-color: rgba(124,58,237,0.38) !important;
+  box-shadow: 0 8px 32px rgba(124,58,237,0.11), 0 0 0 1px rgba(124,58,237,0.14) !important;
+}
+.theme-light .logo-breathe {
+  filter: drop-shadow(0 0 18px rgba(124,58,237,0.45)) drop-shadow(0 0 50px rgba(124,58,237,0.25)) drop-shadow(0 0 6px rgba(168,85,247,0.30));
+}
+.theme-light .logo-breathe-intense {
+  filter: drop-shadow(0 0 28px rgba(168,85,247,0.70)) drop-shadow(0 0 80px rgba(124,58,237,0.45)) drop-shadow(0 0 12px rgba(196,132,252,0.60));
+}
+
+@keyframes hint-enter {
+  from { opacity: 0; transform: scale(0.95) translateY(-6px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0px);  }
+}
+.hint-enter {
+  animation: hint-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes hint-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-4px); }
+}
+.hint-float {
+  animation: hint-float 3s ease-in-out infinite;
+}
+
+@keyframes ripple-ring {
+  0%   { transform: scale(1);   opacity: 0.65; }
+  100% { transform: scale(3.2); opacity: 0;    }
+}
+
+@keyframes arrow-bob {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(5px); }
+}
+.arrow-bob {
+  animation: arrow-bob 1.4s ease-in-out infinite;
+}

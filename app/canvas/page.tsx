@@ -1,6 +1,7 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useTheme } from "../theme-context";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type AiPhase = "idle" | "analyzing" | "markets" | "analyzing_events";
@@ -245,13 +246,16 @@ const riskColor: Record<RiskLevel, string> = {
 };
 
 // ── Detail section helper ─────────────────────────────────────────────────────
-function Section({ label, color, children }: { label: string; color: string; children: string }) {
+function Section({ label, color, children, panelCard, borderSubtle, textSecondary }: {
+  label: string; color: string; children: string;
+  panelCard: string; borderSubtle: string; textSecondary: string;
+}) {
   return (
     <div>
       <div style={{ fontSize: 9, fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.1em", color, marginBottom: 5 }}>
         {label}
       </div>
-      <div style={{ fontSize: 11, color: "#c4b8e0", lineHeight: 1.6, background: "#0d0220", border: "1px solid #1a0d30", borderRadius: 6, padding: "8px 10px" }}>
+      <div style={{ fontSize: 11, color: textSecondary, lineHeight: 1.6, background: panelCard, border: `1px solid ${borderSubtle}`, borderRadius: 6, padding: "8px 10px" }}>
         {children}
       </div>
     </div>
@@ -287,6 +291,32 @@ function useDraggable(initialPos = { x: 200, y: 120 }) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function Canvas() {
+  const { theme, toggle } = useTheme();
+  const isDark = theme === "dark";
+
+  // ── Theme palette ─────────────────────────────────────────────────────────
+  const C = {
+    bg:             isDark ? "#07000f"                                                   : "#F7F3FF",
+    bg2:            isDark ? "#09010f"                                                   : "#EFE9FF",
+    panel:          isDark ? "#08010e"                                                   : "rgba(255,255,255,0.92)",
+    panelCard:      isDark ? "#0c0420"                                                   : "rgba(248,244,255,0.88)",
+    panelElevated:  isDark ? "#0d0320"                                                   : "rgba(244,240,255,0.96)",
+    panelDeep:      isDark ? "#08021a"                                                   : "rgba(250,247,255,0.90)",
+    border:         isDark ? "#2d1b4e"                                                   : "rgba(124,58,237,0.18)",
+    borderSubtle:   isDark ? "#1a0d30"                                                   : "rgba(124,58,237,0.10)",
+    borderFaint:    isDark ? "#160930"                                                   : "rgba(124,58,237,0.07)",
+    textPrimary:    isDark ? "#e2d4f0"                                                   : "#171124",
+    textSecondary:  isDark ? "#d4c4f0"                                                   : "#2a1a40",
+    textMuted:      isDark ? "#4a3060"                                                   : "#6b5080",
+    textFaint:      isDark ? "#3b2060"                                                   : "#9b84c0",
+    headerGrad:     isDark ? "linear-gradient(180deg, #0d0320 0%, #09010f 100%)"         : "linear-gradient(180deg, rgba(240,234,255,0.98) 0%, rgba(234,228,252,0.96) 100%)",
+    windowShadow:   isDark ? "0 12px 48px #00000099, 0 0 80px #7c3aed1a, 0 0 1px #a855f733" : "0 4px 24px rgba(124,58,237,0.10), 0 1px 4px rgba(0,0,0,0.05), 0 0 0 1px rgba(124,58,237,0.12)",
+    windowShadowLg: isDark ? "0 16px 56px #000000bb, 0 0 100px #7c3aed22, 0 0 1px #c084fc44" : "0 8px 40px rgba(124,58,237,0.12), 0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px rgba(124,58,237,0.14)",
+    canvasGlow:     isDark ? "radial-gradient(ellipse 55% 65% at 50% 50%, #7c3aed12 0%, transparent 78%)" : "radial-gradient(ellipse 55% 65% at 50% 50%, rgba(124,58,237,0.05) 0%, transparent 78%)",
+    inputBg:        isDark ? "#0a0220"                                                   : "rgba(244,240,255,0.90)",
+    selectBg:       isDark ? "#130828"                                                   : "rgba(244,240,255,0.95)",
+  };
+
   const [zoom, setZoom]                         = useState(1.0);
   const [pan, setPan]                           = useState({ x: 0, y: 0 });
   const [droppedNodes, setDroppedNodes]         = useState<DroppedNode[]>([]);
@@ -308,6 +338,7 @@ export default function Canvas() {
   type ChatMsg = { role: "user" | "ai"; text: string };
   const [chatMessages, setChatMessages]         = useState<ChatMsg[]>([]);
   const [chatInput, setChatInput]               = useState("");
+  const [orderBuySell, setOrderBuySell]         = useState<"buy" | "sell">("buy");
   const [orderSide, setOrderSide]               = useState<"YES" | "NO">("YES");
   const [orderAmount, setOrderAmount]           = useState("100");
   const [orderPlaced, setOrderPlaced]           = useState(false);
@@ -330,9 +361,25 @@ export default function Canvas() {
   const [selectedEventsPos, setSelectedEventsPos] = useState<{ x: number; y: number } | null>(null);
 
   // Analysis Detail window — drag / resize / minimize
-  const { pos: detailPos, onMouseDown: detailHeaderMouseDown } = useDraggable({ x: 760, y: 60 });
-  const [detailSize, setDetailSize]               = useState({ width: 420, height: 580 });
+  const { pos: detailPos, onMouseDown: detailHeaderMouseDown } = useDraggable({ x: 340, y: 60 });
+  const [detailSize, setDetailSize]               = useState({ width: 760, height: 600 });
   const [detailMinimized, setDetailMinimized]     = useState(false);
+
+  // Chat scroll anchor
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+
+  // Onboarding hint
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [showOnboardingHint, setShowOnboardingHint]   = useState(false);
+  const [dolphinRippling, setDolphinRippling]         = useState(false);
+  const [hoveredEventId, setHoveredEventId]           = useState<string | null>(null);
+  useEffect(() => {
+    try { if (localStorage.getItem("dolphin_ob_dismissed") === "1") setOnboardingDismissed(true); } catch {}
+  }, []);
+  useEffect(() => {
+    if (selectedEvents.length > 0) setShowOnboardingHint(false);
+  }, [selectedEvents]);
 
   // AI Market Analysis window — drag / resize / minimize
   const { pos: analysisPos, onMouseDown: analysisHeaderMouseDown } = useDraggable({ x: 340, y: 80 });
@@ -431,6 +478,51 @@ export default function Canvas() {
     };
   }
 
+  // ── Shared: add/replace a left-panel module on the canvas ────────────────
+  function addOrReplaceModule(modId: string) {
+    const mod = leftModules.find(m => m.id === modId);
+    if (!mod) return;
+    const isUpdate = droppedNodes.some(n => n.label === mod.label);
+    setDroppedNodes(prev => {
+      const existsAt = prev.findIndex(n => n.label === mod.label);
+      if (existsAt >= 0) {
+        return prev.map((n, i) => i === existsAt ? { ...n, sub: mod.sub, accent: mod.accent, icon: mod.icon } : n);
+      }
+      const idx    = prev.length;
+      const angle  = (idx / 7) * Math.PI * 2 - Math.PI / 2;
+      const config = (defaultConfigs[mod.label] ?? []).map(f => ({ ...f }));
+      return [...prev, {
+        uid: ++uidRef.current, label: mod.label, sub: mod.sub, accent: mod.accent, icon: mod.icon,
+        x: Math.round(Math.cos(angle) * 230), y: Math.round(Math.sin(angle) * 230), config,
+      }];
+    });
+    if (isUpdate) {
+      setCenterMsg(`${mod.label} updated`);
+    } else {
+      setCenterMsg(`${mod.label} added`);
+    }
+    if (msgTimer.current) clearTimeout(msgTimer.current);
+    msgTimer.current = setTimeout(() => setCenterMsg(null), 2000);
+  }
+
+  // ── Onboarding dismiss ────────────────────────────────────────────────────
+  function dismissOnboarding() {
+    setShowOnboardingHint(false);
+    setOnboardingDismissed(true);
+    try { localStorage.setItem("dolphin_ob_dismissed", "1"); } catch {}
+  }
+
+  // ── Shared: add an event to selectedEvents ────────────────────────────────
+  function addEventToSelected(eventId: string) {
+    const ev = mockEvents.find(e => e.eventId === eventId);
+    if (!ev) return;
+    if (selectedEvents.includes(eventId)) return;
+    setSelectedEvents(prev => [...prev, eventId]);
+    setCenterMsg(`${ev.title.slice(0, 32)}… selected`);
+    if (msgTimer.current) clearTimeout(msgTimer.current);
+    msgTimer.current = setTimeout(() => setCenterMsg(null), 2000);
+  }
+
   // ── Left panel module drag ────────────────────────────────────────────────
   function onModuleDragStart(id: string) { dragId.current = id; }
 
@@ -447,13 +539,7 @@ export default function Canvas() {
 
     // ── Event card dropped from Discovery window ──
     if (id.startsWith("event:")) {
-      const eventId = id.slice(6);
-      const ev = mockEvents.find(ev => ev.eventId === eventId);
-      if (!ev) return;
-      setSelectedEvents(prev => prev.includes(eventId) ? prev : [...prev, eventId]);
-      setCenterMsg("Event added for analysis");
-      if (msgTimer.current) clearTimeout(msgTimer.current);
-      msgTimer.current = setTimeout(() => setCenterMsg(null), 2000);
+      addEventToSelected(id.slice(6));
       return;
     }
 
@@ -486,29 +572,7 @@ export default function Canvas() {
     }
 
     // ── Strategy module dropped from left panel ──
-    const mod = leftModules.find(m => m.id === id);
-    if (!mod) return;
-
-    const isUpdate = droppedNodes.some(n => n.label === mod.label);
-
-    setDroppedNodes(prev => {
-      const existsAt = prev.findIndex(n => n.label === mod.label);
-      if (existsAt >= 0) {
-        return prev.map((n, i) => i === existsAt ? { ...n, sub: mod.sub, accent: mod.accent, icon: mod.icon } : n);
-      }
-      const idx   = prev.length;
-      const angle = (idx / 7) * Math.PI * 2 - Math.PI / 2;
-      const x     = Math.round(Math.cos(angle) * 230);
-      const y     = Math.round(Math.sin(angle) * 230);
-      const config = (defaultConfigs[mod.label] ?? []).map(f => ({ ...f }));
-      return [...prev, { uid: ++uidRef.current, label: mod.label, sub: mod.sub, accent: mod.accent, icon: mod.icon, x, y, config }];
-    });
-
-    if (isUpdate) {
-      setCenterMsg(`${mod.label} updated`);
-      if (msgTimer.current) clearTimeout(msgTimer.current);
-      msgTimer.current = setTimeout(() => setCenterMsg(null), 2000);
-    }
+    addOrReplaceModule(id);
   }
 
   // ── Analyze events (sequential Dolphin status) ───────────────────────────
@@ -552,16 +616,24 @@ export default function Canvas() {
 
   function onDolphinClick(e: React.MouseEvent) {
     e.stopPropagation();
+    // Ripple on every click
+    setDolphinRippling(false);
+    requestAnimationFrame(() => setDolphinRippling(true));
+    setTimeout(() => setDolphinRippling(false), 750);
+
     if (droppedNodes.length === 0) {
       setCenterMsg("Add strategy modules first");
       if (msgTimer.current) clearTimeout(msgTimer.current);
       msgTimer.current = setTimeout(() => setCenterMsg(null), 2500);
+      if (selectedEvents.length === 0 && !onboardingDismissed) setShowOnboardingHint(true);
       return;
     }
     if (dolphinPhase === "markets") {
       setShowDiscovery(true); setDiscMinimized(false);
+      if (selectedEvents.length === 0 && !onboardingDismissed) setShowOnboardingHint(true);
       return;
     }
+    if (selectedEvents.length === 0 && !onboardingDismissed) setShowOnboardingHint(true);
     triggerDiscovery();
   }
 
@@ -572,7 +644,7 @@ export default function Canvas() {
     const sx = e.clientX,        sy = e.clientY;
     function onMove(me: MouseEvent) {
       setDetailSize({
-        width:  Math.max(360, sw + me.clientX - sx),
+        width:  Math.max(560, sw + me.clientX - sx),
         height: Math.max(420, sh + me.clientY - sy),
       });
     }
@@ -613,22 +685,34 @@ export default function Canvas() {
     const lower = text.toLowerCase();
     let aiReply: string;
     let patch: Partial<MarketAnalysis> = {};
+
     if (/conservative|safer|reduce risk/.test(lower)) {
       patch = {
         confidence: Math.max(0, selectedMA.confidence - 5),
         riskLevel: selectedMA.riskLevel === "High" ? "Medium" : "Low",
         suggestedAction: selectedMA.suggestedAction === "Strong Buy" ? "Small Buy" : "Watch",
       };
-      aiReply = "Adjusted to a more conservative view due to volatility and time-to-resolution risk.";
-    } else if (/aggressive|higher conviction/.test(lower)) {
+      aiReply = "I reduced the risk profile and lowered confidence due to volatility and time-to-resolution risk.";
+    } else if (/aggressive|higher conviction|more upside/.test(lower)) {
       patch = {
         confidence: Math.min(100, selectedMA.confidence + 5),
         suggestedAction: "Strong Buy",
       };
-      aiReply = "Adjusted to a higher-conviction view based on stronger directional assumptions.";
+      aiReply = "I increased conviction based on stronger upside assumptions, but risk remains elevated.";
+    } else if (/explain|why/.test(lower)) {
+      aiReply = "The recommendation is based on price, liquidity, implied probability, sentiment alignment, and event resolution timing.";
+    } else if (/downside|risk|bear/.test(lower)) {
+      aiReply = "The main downside is mispriced probability, low liquidity, and sharp sentiment reversal before resolution.";
+    } else if (/position size|size/.test(lower)) {
+      aiReply = "A safer position size would be 1–2% of portfolio. Higher conviction setups can scale to 3–5%.";
+    } else if (/entry|price/.test(lower)) {
+      aiReply = "A better entry would be near the lower end of recent implied probability, with staged entries instead of one full order.";
+    } else if (/exit|take profit/.test(lower)) {
+      aiReply = "Consider reducing exposure if implied probability moves 15–20% in your favor or if confidence drops below 60%.";
     } else {
       aiReply = "I updated the analysis context based on your preference.";
     }
+
     if (Object.keys(patch).length > 0) setSelectedMA({ ...selectedMA, ...patch });
     setTimeout(() => setChatMessages(prev => [...prev, { role: "ai", text: aiReply }]), 600);
   }
@@ -648,7 +732,7 @@ export default function Canvas() {
       amount: clampedAmt,
       price: selectedMA.price,
       timestamp: Date.now(),
-      type: "Mock Market",
+      type: orderBuySell === "sell" ? "Close" : "Mock Market",
       status: "Filled",
     };
     setOrders(prev => [newOrder, ...prev]);
@@ -819,20 +903,20 @@ export default function Canvas() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: "#07000f", color: "#e2d4f0" }}>
+    <div className={`flex flex-col h-screen overflow-hidden theme-${theme}`} style={{ background: C.bg, color: C.textPrimary }}>
 
       {/* ── Top Nav ── */}
       <header className="flex-shrink-0 flex items-center justify-between px-4 h-12 z-50"
-        style={{ borderBottom: "1px solid #2d1b4e", background: "#09010f" }}>
+        style={{ borderBottom: `1px solid ${C.border}`, background: C.bg2 }}>
         <div className="flex items-center gap-3 min-w-0">
           <Link href="/" className="flex items-center gap-2 flex-shrink-0">
-            <img src="/logo.png" alt="Dolphin AI" width={22} height={22} style={{ mixBlendMode: "screen" }} />
+            <img src="/logo.png" alt="Dolphin AI" width={22} height={22} style={{ mixBlendMode: isDark ? "screen" : "multiply" }} />
             <span className="text-xs font-mono uppercase tracking-widest" style={{ color: "#c084fc" }}>Canvas</span>
           </Link>
         </div>
         <div className="flex items-center gap-2 text-sm">
-          <span style={{ color: "#e2d4f0" }}>Untitled Strategy</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4a3060" strokeWidth="2">
+          <span style={{ color: C.textPrimary }}>Untitled Strategy</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.textMuted} strokeWidth="2">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
           </svg>
@@ -841,15 +925,15 @@ export default function Canvas() {
         </div>
         <div className="flex items-center gap-1 min-w-0">
           {["Undo", "Redo"].map(label => (
-            <button key={label} className="px-2 py-1 text-xs rounded" style={{ color: "#4a3060" }}>{label}</button>
+            <button key={label} className="px-2 py-1 text-xs rounded" style={{ color: C.textMuted }}>{label}</button>
           ))}
-          <div className="w-px h-4 mx-1" style={{ background: "#2d1b4e" }} />
+          <div className="w-px h-4 mx-1" style={{ background: C.border }} />
           <button
             onClick={() => setShowPortfolio(p => !p)}
             className="px-3 py-1 text-xs rounded font-mono"
             style={{
               color: showPortfolio ? "#fff" : "#22d3ee",
-              background: showPortfolio ? "#0e3a3a" : "transparent",
+              background: showPortfolio ? (isDark ? "#0e3a3a" : "rgba(34,211,238,0.12)") : "transparent",
               border: `1px solid ${showPortfolio ? "#22d3ee66" : "#22d3ee33"}`,
               transition: "all 0.15s ease",
             }}>Portfolio</button>
@@ -858,8 +942,8 @@ export default function Canvas() {
             className="px-3 py-1 text-xs rounded font-mono"
             style={{
               position: "relative",
-              color: showMacros ? "#fff" : "#c084fc",
-              background: showMacros ? "#1e0a3a" : "transparent",
+              color: showMacros ? (isDark ? "#fff" : "#5b21b6") : "#c084fc",
+              background: showMacros ? (isDark ? "#1e0a3a" : "rgba(124,58,237,0.10)") : "transparent",
               border: `1px solid ${showMacros ? "#a855f766" : "#a855f733"}`,
               transition: "all 0.15s ease",
             }}>
@@ -873,8 +957,21 @@ export default function Canvas() {
           <button className="px-3 py-1 text-xs rounded" style={{ color: "#c084fc", border: "1px solid #3b1f6e" }}>Share</button>
           <button className="px-3 py-1 text-xs rounded font-medium"
             style={{ background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "#fff" }}>Deploy</button>
+          {/* Theme toggle */}
+          <button
+            onClick={toggle}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            style={{
+              width: 28, height: 28, borderRadius: 7,
+              background: isDark ? "#1a0d30" : "rgba(124,58,237,0.08)",
+              border: `1px solid ${isDark ? "#3b1f6e" : "rgba(124,58,237,0.22)"}`,
+              color: isDark ? "#c084fc" : "#7c3aed",
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 14, transition: "all 0.2s ease", flexShrink: 0,
+            }}
+          >{isDark ? "☀" : "☾"}</button>
           <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs ml-1"
-            style={{ background: "#1a0d30", border: "1px solid #2d1b4e", color: "#8b5cf6" }}>A</div>
+            style={{ background: isDark ? "#1a0d30" : "rgba(124,58,237,0.10)", border: `1px solid ${C.border}`, color: "#8b5cf6" }}>A</div>
         </div>
       </header>
 
@@ -883,9 +980,9 @@ export default function Canvas() {
 
         {/* ── Left Panel ── */}
         <aside className="flex-shrink-0 w-56 flex flex-col overflow-y-auto"
-          style={{ borderRight: "1px solid #2d1b4e", background: "#09010f" }}>
+          style={{ borderRight: `1px solid ${C.border}`, background: C.bg2 }}>
           <div className="px-3 pt-4 pb-2">
-            <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: "#4a3060" }}>Add Modules</p>
+            <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: C.textMuted }}>Add Modules</p>
             <div className="flex flex-col gap-1.5">
               {leftModules.map(m => {
                 const added = droppedNodes.some(n => n.label === m.label);
@@ -893,19 +990,25 @@ export default function Canvas() {
                   <div key={m.id}
                     draggable
                     onDragStart={() => onModuleDragStart(m.id)}
-                    className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg cursor-grab active:cursor-grabbing"
+                    onClick={() => addOrReplaceModule(m.id)}
+                    className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer active:scale-95"
                     style={{
                       border:     `1px solid ${m.accent}${added ? "55" : "22"}`,
                       background: `${m.accent}${added ? "14" : "08"}`,
-                      opacity: added ? 0.6 : 1,
-                      transition: "opacity 0.2s ease",
+                      opacity: added ? 0.65 : 1,
+                      transition: "opacity 0.2s ease, transform 0.1s ease",
                     }}>
                     <span className="text-base leading-none mt-0.5 flex-shrink-0" style={{ color: m.accent }}>{m.icon}</span>
                     <div className="min-w-0">
-                      <div className="text-xs font-medium truncate" style={{ color: "#d4c4f0" }}>{m.label}</div>
-                      <div className="text-xs mt-0.5 truncate" style={{ color: added ? m.accent + "88" : "#4a3060" }}>
+                      <div className="text-xs font-medium truncate" style={{ color: C.textSecondary }}>{m.label}</div>
+                      <div className="text-xs mt-0.5 truncate" style={{ color: added ? m.accent + "88" : C.textMuted }}>
                         {added ? "✓ Added" : m.sub}
                       </div>
+                      {!added && (
+                        <div className="text-xs mt-1 truncate" style={{ color: C.textFaint, fontSize: 9 }}>
+                          Click or drag to add
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -918,7 +1021,7 @@ export default function Canvas() {
         <main
           ref={mainRef}
           className="flex-1 relative overflow-hidden dot-grid"
-          style={{ background: "#07000f", cursor: "grab" }}
+          style={{ backgroundColor: C.bg, cursor: "grab" }}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
@@ -927,7 +1030,7 @@ export default function Canvas() {
         >
           {/* Background glows */}
           <div className="absolute inset-0 pointer-events-none"
-            style={{ background: "radial-gradient(ellipse 55% 65% at 50% 50%, #7c3aed12 0%, transparent 78%)" }} />
+            style={{ background: C.canvasGlow }} />
           <div className="absolute inset-0 pointer-events-none"
             style={{ background: "radial-gradient(ellipse 100% 100% at 50% 50%, transparent 55%, #07000f88 100%)" }} />
           <div className="absolute inset-0 pointer-events-none" style={{
@@ -939,7 +1042,7 @@ export default function Canvas() {
           {/* Empty-state hint */}
           {droppedNodes.length === 0 && (
             <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-end pb-32">
-              <div className="text-xs font-mono" style={{ color: "#2d1b4e" }}>
+              <div className="text-xs font-mono" style={{ color: C.textMuted, opacity: 0.6 }}>
                 ↑ Drag a module onto Dolphin AI to begin
               </div>
             </div>
@@ -1009,6 +1112,24 @@ export default function Canvas() {
               }}
             />
 
+            {/* Dolphin click ripple */}
+            {dolphinRippling && (
+              <>
+                <div style={{
+                  position: "absolute", width: 120, height: 120, left: -60, top: -60,
+                  borderRadius: "50%", pointerEvents: "none", zIndex: 25,
+                  border: "1.5px solid #c084fc88",
+                  animation: "ripple-ring 0.65s ease-out forwards",
+                }} />
+                <div style={{
+                  position: "absolute", width: 120, height: 120, left: -60, top: -60,
+                  borderRadius: "50%", pointerEvents: "none", zIndex: 25,
+                  border: "1px solid #a855f744",
+                  animation: "ripple-ring 0.65s ease-out 0.14s forwards",
+                }} />
+              </>
+            )}
+
             {/* Center logo */}
             <div style={{
               position: "absolute", width: 120, height: 120, left: -60, top: -60,
@@ -1060,7 +1181,9 @@ export default function Canvas() {
                   onClick={e => onNodeClick(e, node.uid)}>
                   <div style={{
                     width: 140, padding: "8px 10px 7px",
-                    background: `linear-gradient(135deg, #0e051c, ${node.accent}${isSel ? "22" : "14"})`,
+                    background: isDark
+                      ? `linear-gradient(135deg, #0e051c, ${node.accent}${isSel ? "22" : "14"})`
+                      : `linear-gradient(135deg, rgba(255,255,255,0.92), ${node.accent}${isSel ? "18" : "0c"})`,
                     border:      `1px solid ${node.accent}${isSel ? "99" : "44"}`,
                     borderRadius: 8,
                     boxShadow:   isSel ? `0 0 24px ${node.accent}55, 0 0 8px ${node.accent}33` : `0 0 16px ${node.accent}18`,
@@ -1069,10 +1192,10 @@ export default function Canvas() {
                   }}>
                     <div className="flex items-center gap-1.5 mb-1.5">
                       <span className="text-base leading-none flex-shrink-0" style={{ color: node.accent }}>{node.icon}</span>
-                      <span className="text-xs font-medium leading-tight" style={{ color: "#d4c4f0" }}>{node.label}</span>
+                      <span className="text-xs font-medium leading-tight" style={{ color: C.textSecondary }}>{node.label}</span>
                     </div>
                     <div style={{ height: 1, background: `linear-gradient(to right, ${node.accent}44, transparent)` }} />
-                    <div className="text-xs mt-1.5 truncate" style={{ color: "#4a3060" }}>{node.sub}</div>
+                    <div className="text-xs mt-1.5 truncate" style={{ color: C.textMuted }}>{node.sub}</div>
                     <div className="flex items-center gap-1 mt-1.5">
                       <span className="w-1 h-1 rounded-full flex-shrink-0 node-flicker"
                         style={{ background: node.accent, boxShadow: `0 0 4px ${node.accent}` }} />
@@ -1100,11 +1223,12 @@ export default function Canvas() {
                 height: discMinimized ? "auto" : discSize.height,
                 zIndex: 50,
                 display: "flex", flexDirection: "column",
-                background: "#08010e",
-                border: "1px solid #2d1b4e",
+                background: C.panel,
+                border: `1px solid ${C.border}`,
                 borderRadius: 12,
-                boxShadow: "0 12px 48px #00000099, 0 0 80px #7c3aed1a, 0 0 1px #a855f733",
+                boxShadow: C.windowShadow,
                 overflow: "hidden",
+                backdropFilter: isDark ? "none" : "blur(20px)",
               }}
             >
               {/* Header (draggable) */}
@@ -1112,9 +1236,9 @@ export default function Canvas() {
                 onMouseDown={onDiscHeaderMouseDown}
                 style={{
                   padding: "10px 12px 9px",
-                  borderBottom: discMinimized ? "none" : "1px solid #160930",
+                  borderBottom: discMinimized ? "none" : `1px solid ${C.borderSubtle}`,
                   flexShrink: 0, cursor: "grab", userSelect: "none",
-                  background: "linear-gradient(180deg, #0d0320 0%, #09010f 100%)",
+                  background: C.headerGrad,
                   display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
                 }}
               >
@@ -1161,7 +1285,7 @@ export default function Canvas() {
               {!discMinimized && (
                 <>
                   {/* Filters + sort */}
-                  <div style={{ padding: "8px 12px", borderBottom: "1px solid #160930", flexShrink: 0 }}>
+                  <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.borderSubtle}`, flexShrink: 0 }}>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 7 }}>
                       {["All","Crypto","Macro","Stocks","Politics","Sports"].map(cat => (
                         <button key={cat}
@@ -1181,7 +1305,7 @@ export default function Canvas() {
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: 10, color: "#3b2060", fontFamily: "monospace" }}>Sort by</span>
                       <select value={sortBy} onChange={e => setSortBy(e.target.value)} onMouseDown={e => e.stopPropagation()}
-                        style={{ fontSize: 10, background: "#130828", color: "#c084fc", border: "1px solid #2d1b4e", borderRadius: 4, padding: "2px 6px", fontFamily: "monospace", outline: "none", cursor: "pointer" }}>
+                        style={{ fontSize: 10, background: C.selectBg, color: "#c084fc", border: `1px solid ${C.border}`, borderRadius: 4, padding: "2px 6px", fontFamily: "monospace", outline: "none", cursor: "pointer" }}>
                         <option value="matchScore">Match Score</option>
                         <option value="volume">Volume</option>
                         <option value="closingSoon">Closing Soon</option>
@@ -1205,15 +1329,19 @@ export default function Canvas() {
                             e.stopPropagation();
                             dragId.current = "event:" + ev.eventId;
                           }}
+                          onMouseEnter={e => { e.stopPropagation(); if (!isAdded) setHoveredEventId(ev.eventId); }}
+                          onMouseLeave={() => setHoveredEventId(null)}
+                          onClick={e => { e.stopPropagation(); addEventToSelected(ev.eventId); }}
                           style={{
-                            background: isAdded ? "#08021a" : "#0c0420",
-                            border: `1px solid ${isAdded ? "#10b98133" : "#2d1b4e"}`,
+                            background: isAdded ? C.panelDeep : C.panelCard,
+                            border: `1px solid ${isAdded ? "#10b98133" : hoveredEventId === ev.eventId ? accent + "66" : C.border}`,
                             borderRadius: 9,
                             padding: "10px 11px",
                             flexShrink: 0,
-                            cursor: isAdded ? "default" : "grab",
+                            cursor: isAdded ? "default" : "pointer",
                             opacity: isAdded ? 0.72 : 1,
-                            transition: "border-color 0.2s, opacity 0.2s",
+                            boxShadow: hoveredEventId === ev.eventId && !isAdded ? `0 0 18px ${accent}30, 0 0 6px ${accent}18` : "none",
+                            transition: "border-color 0.18s, opacity 0.2s, box-shadow 0.18s",
                           }}
                         >
                           {/* Row 1: category chip + match score */}
@@ -1229,12 +1357,12 @@ export default function Canvas() {
                           </div>
 
                           {/* Row 2: title */}
-                          <div style={{ fontSize: 12, color: "#d4c4f0", lineHeight: 1.45, marginBottom: 4, maxHeight: "2.9em", overflow: "hidden" }}>
+                          <div style={{ fontSize: 12, color: C.textSecondary, lineHeight: 1.45, marginBottom: 4, maxHeight: "2.9em", overflow: "hidden" }}>
                             {ev.title}
                           </div>
 
                           {/* Row 3: match reason */}
-                          <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", marginBottom: 6, fontStyle: "italic" }}>
+                          <div style={{ fontSize: 9, color: C.textMuted, fontFamily: "monospace", marginBottom: 6, fontStyle: "italic" }}>
                             {ev.shortReason}
                           </div>
 
@@ -1253,14 +1381,14 @@ export default function Canvas() {
                             </span>
                           </div>
 
-                          {/* Row 5: drag CTA or added badge */}
+                          {/* Row 5: CTA or added badge */}
                           {isAdded ? (
                             <div style={{ fontSize: 10, color: "#10b981", fontFamily: "monospace", textAlign: "center", padding: "3px 0", background: "#10b98110", borderRadius: 4 }}>
                               ✓ Added for analysis
                             </div>
                           ) : (
                             <div style={{ fontSize: 9, color: "#3b2060", fontFamily: "monospace", textAlign: "center", padding: "3px 0", border: "1px dashed #2d1b4e", borderRadius: 4 }}>
-                              ⊡ Drag to Dolphin for analysis
+                              Click or drag to analyze
                             </div>
                           )}
                         </div>
@@ -1298,17 +1426,18 @@ export default function Canvas() {
                 width: 272, maxHeight: 300,
                 zIndex: 50,
                 display: "flex", flexDirection: "column",
-                background: "#08010e",
-                border: "1px solid #2d1b4e",
+                background: C.panel,
+                border: `1px solid ${C.border}`,
                 borderRadius: 10,
-                boxShadow: "0 8px 32px #00000077, 0 0 40px #7c3aed14",
+                boxShadow: C.windowShadow,
                 overflow: "hidden",
+                backdropFilter: isDark ? "none" : "blur(16px)",
               }}
             >
               {/* Panel header */}
               <div style={{
-                padding: "8px 12px", borderBottom: "1px solid #160930", flexShrink: 0,
-                background: "#0d0320", display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "8px 12px", borderBottom: `1px solid ${C.borderSubtle}`, flexShrink: 0,
+                background: C.headerGrad, display: "flex", justifyContent: "space-between", alignItems: "center",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                   <span style={{ fontSize: 10, color: "#c084fc", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.12em" }}>Selected Events</span>
@@ -1331,15 +1460,15 @@ export default function Canvas() {
                   const accent = catAccent[ev.category] ?? "#8b5cf6";
                   return (
                     <div key={evId} style={{
-                      padding: "7px 12px", borderBottom: "1px solid #0f0820",
+                      padding: "7px 12px", borderBottom: `1px solid ${C.borderFaint}`,
                       display: "flex", alignItems: "center", gap: 8,
                     }}>
                       <span style={{ width: 6, height: 6, borderRadius: "50%", background: accent, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, color: "#d4c4f0", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                        <div style={{ fontSize: 11, color: C.textSecondary, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
                           {ev.title}
                         </div>
-                        <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", marginTop: 1 }}>
+                        <div style={{ fontSize: 9, color: C.textMuted, fontFamily: "monospace", marginTop: 1 }}>
                           {ev.category} · {ev.outcomesCount} markets
                         </div>
                       </div>
@@ -1375,6 +1504,91 @@ export default function Canvas() {
             </div>
           )}
 
+          {/* ── Onboarding Hint ── */}
+          {showOnboardingHint && !onboardingDismissed && selectedEvents.length === 0 && (
+            <div
+              onMouseDown={e => e.stopPropagation()}
+              onClick={e => e.stopPropagation()}
+              className="hint-enter hint-float"
+              style={{
+                position: "absolute", right: 16, top: 16,
+                width: 256, zIndex: 65,
+                background: "linear-gradient(135deg, #0d0224ee 0%, #110330ee 100%)",
+                border: "1px solid #7c3aed55",
+                borderRadius: 12,
+                boxShadow: "0 8px 40px #00000099, 0 0 48px #7c3aed20, 0 0 1px #a855f744",
+                backdropFilter: "blur(18px)",
+                padding: "14px 14px 12px",
+              }}
+            >
+              {/* Close × */}
+              <button
+                onClick={dismissOnboarding}
+                style={{
+                  position: "absolute", top: 8, right: 8,
+                  width: 20, height: 20, borderRadius: 4,
+                  background: "transparent", border: "none",
+                  color: "#4a3060", cursor: "pointer", fontSize: 12,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  lineHeight: 1, padding: 0,
+                }}
+              >✕</button>
+
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, paddingRight: 20 }}>
+                <div style={{
+                  width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                  background: "#7c3aed22", border: "1px solid #7c3aed44",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <img src="/logo.png" alt="" width={16} height={16} style={{ mixBlendMode: "screen" }} />
+                </div>
+                <span style={{ fontSize: 11, color: "#e2d4f0", fontWeight: 600, lineHeight: 1.35 }}>
+                  Start building your strategy
+                </span>
+              </div>
+
+              {/* Body */}
+              <div style={{ fontSize: 11, color: "#9b84c0", lineHeight: 1.7, marginBottom: 10 }}>
+                Click or drag events into Dolphin<br />
+                to generate AI trading analysis
+              </div>
+
+              {/* Combine hint chip */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 6, marginBottom: 12,
+                padding: "5px 9px",
+                background: "#7c3aed0e", border: "1px solid #7c3aed22", borderRadius: 6,
+              }}>
+                <span style={{ fontSize: 11, color: "#7c3aed", flexShrink: 0 }}>⬡</span>
+                <span style={{ fontSize: 10, color: "#6b4d90", fontFamily: "monospace" }}>
+                  You can combine multiple events
+                </span>
+              </div>
+
+              {/* Animated arrow → points down toward Discovery / event cards */}
+              <div className="arrow-bob" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginBottom: 11 }}>
+                <div style={{ width: 1, height: 14, background: "linear-gradient(to bottom, #7c3aed66, transparent)" }} />
+                <svg width="14" height="8" viewBox="0 0 14 8" fill="none">
+                  <path d="M1 1L7 7L13 1" stroke="#7c3aed" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+
+              {/* Got it */}
+              <button
+                onClick={dismissOnboarding}
+                style={{
+                  width: "100%", padding: "6px 0", borderRadius: 6, fontSize: 11,
+                  fontFamily: "monospace",
+                  background: "linear-gradient(135deg,#7c3aed,#a855f7)",
+                  color: "#fff", border: "none", cursor: "pointer",
+                  boxShadow: "0 0 18px #7c3aed33",
+                  transition: "opacity 0.15s ease",
+                }}
+              >Got it</button>
+            </div>
+          )}
+
           {/* ── AI Market Analysis floating window ── */}
           {showAnalysis && (
             analysisMinimized ? (
@@ -1393,21 +1607,22 @@ export default function Canvas() {
                 width: analysisSize.width, height: analysisSize.height,
                 zIndex: 50,
                 display: "flex", flexDirection: "column",
-                background: "#08010e",
-                border: "1px solid #2d1b4e",
+                background: C.panel,
+                border: `1px solid ${C.border}`,
                 borderRadius: 12,
-                boxShadow: "0 12px 48px #00000099, 0 0 80px #7c3aed1a, 0 0 1px #a855f733",
+                boxShadow: C.windowShadow,
                 overflow: "hidden",
+                backdropFilter: isDark ? "none" : "blur(20px)",
               }}
             >
               {/* Header — drag handle */}
               <div
                 onMouseDown={analysisHeaderMouseDown}
-                style={{ padding: "12px 14px 10px", borderBottom: "1px solid #160930", flexShrink: 0, cursor: "grab", userSelect: "none", background: "linear-gradient(180deg, #0d0320 0%, #09010f 100%)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}
+                style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${C.borderFaint}`, flexShrink: 0, cursor: "grab", userSelect: "none", background: C.headerGrad, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}
               >
                 <div>
                   <div style={{ fontSize: 11, color: "#c084fc", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 600 }}>AI Market Analysis</div>
-                  <div style={{ fontSize: 10, color: "#4a3060", fontFamily: "monospace", marginTop: 3 }}>Tradable outcomes generated from selected events</div>
+                  <div style={{ fontSize: 10, color: C.textMuted, fontFamily: "monospace", marginTop: 3 }}>Tradable outcomes generated from selected events</div>
                 </div>
                 <div onMouseDown={e => e.stopPropagation()} style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                   <button onClick={e => { e.stopPropagation(); setAnalysisMinimized(true); }}
@@ -1425,17 +1640,20 @@ export default function Canvas() {
                   return (
                     <div
                       key={ma.id}
-                      onClick={e => { e.stopPropagation(); if (isSel) { setShowDetail(false); setSelectedMA(null); } else { setSelectedMA(ma); setShowDetail(true); setDetailMinimized(false); setChatMessages([]); setChatInput(""); setOrderSide(ma.outcome); setOrderAmount("100"); setOrderPlaced(false); } }}
+                      onClick={e => { e.stopPropagation(); if (isSel) { setShowDetail(false); setSelectedMA(null); } else { setSelectedMA(ma); setShowDetail(true); setDetailMinimized(false); setChatMessages([
+                          { role: "ai", text: "I analyzed this market based on sentiment, liquidity, time-to-resolution, and risk exposure." },
+                          { role: "ai", text: "You can ask me to make the strategy more conservative, more aggressive, or explain the downside." },
+                        ]); setChatInput(""); setOrderBuySell("buy"); setOrderSide(ma.outcome); setOrderAmount("100"); setOrderPlaced(false); } }}
                       style={{
-                        background: isSel ? "#110330" : "#0c0420",
-                        border: `1px solid ${isSel ? "#7c3aed88" : "#2d1b4e"}`,
+                        background: isSel ? (isDark ? "#110330" : "rgba(124,58,237,0.08)") : C.panelCard,
+                        border: `1px solid ${isSel ? "#7c3aed88" : C.border}`,
                         borderRadius: 8, padding: "9px 11px", cursor: "pointer", flexShrink: 0,
                         boxShadow: isSel ? "0 0 18px #7c3aed22" : "none",
                         transition: "border-color 0.2s, background 0.2s, box-shadow 0.2s",
                       }}
                     >
-                      <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.06em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ma.eventTitle}</div>
-                      <div style={{ fontSize: 11, color: "#d4c4f0", lineHeight: 1.4, marginBottom: 6, maxHeight: "2.8em", overflow: "hidden" }}>{ma.marketTitle}</div>
+                      <div style={{ fontSize: 9, color: C.textMuted, fontFamily: "monospace", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.06em", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{ma.eventTitle}</div>
+                      <div style={{ fontSize: 11, color: C.textSecondary, lineHeight: 1.4, marginBottom: 6, maxHeight: "2.8em", overflow: "hidden" }}>{ma.marketTitle}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 600, borderRadius: 3, padding: "1px 6px", color: ma.outcome === "YES" ? "#10b981" : "#fb923c", background: ma.outcome === "YES" ? "#10b98118" : "#fb923c18", border: `1px solid ${ma.outcome === "YES" ? "#10b98133" : "#fb923c33"}` }}>{ma.outcome} {ma.price}¢</span>
                         <span style={{ fontSize: 10, fontFamily: "monospace", fontWeight: 600, borderRadius: 3, padding: "1px 7px", color: actionColor[ma.suggestedAction], background: actionColor[ma.suggestedAction] + "18", border: `1px solid ${actionColor[ma.suggestedAction]}33` }}>{ma.suggestedAction}</span>
@@ -1471,9 +1689,9 @@ export default function Canvas() {
                   position: "absolute", left: detailPos.x, top: detailPos.y,
                   zIndex: 60, cursor: "pointer", userSelect: "none",
                   display: "inline-flex", alignItems: "center", gap: 8,
-                  background: "#100228", border: "1px solid #3b1f6e",
+                  background: C.panelElevated, border: `1px solid ${C.border}`,
                   borderRadius: 20, padding: "5px 12px 5px 10px",
-                  boxShadow: "0 4px 20px #00000088, 0 0 30px #7c3aed18",
+                  boxShadow: C.windowShadow,
                 }}
               >
                 <span style={{ fontSize: 10, color: "#c084fc", fontFamily: "monospace" }}>▢</span>
@@ -1496,11 +1714,12 @@ export default function Canvas() {
                 width: detailSize.width, height: detailSize.height,
                 zIndex: 60,
                 display: "flex", flexDirection: "column",
-                background: "#08010e",
-                border: "1px solid #3b1f6e",
+                background: C.panel,
+                border: `1px solid ${C.border}`,
                 borderRadius: 12,
-                boxShadow: "0 16px 56px #000000bb, 0 0 100px #7c3aed22, 0 0 1px #c084fc44",
+                boxShadow: C.windowShadowLg,
                 overflow: "hidden",
+                backdropFilter: isDark ? "none" : "blur(20px)",
               }}
             >
               {/* Header — drag handle */}
@@ -1508,18 +1727,18 @@ export default function Canvas() {
                 onMouseDown={detailHeaderMouseDown}
                 style={{
                   padding: "11px 14px 9px",
-                  borderBottom: "1px solid #1a0d30",
+                  borderBottom: `1px solid ${C.borderSubtle}`,
                   flexShrink: 0,
                   cursor: "grab", userSelect: "none",
-                  background: "linear-gradient(180deg, #100228 0%, #09010f 100%)",
+                  background: C.headerGrad,
                   display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8,
                 }}
               >
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", textTransform: "uppercase", marginBottom: 3 }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, fontFamily: "monospace", textTransform: "uppercase", marginBottom: 3 }}>
                     {selectedMA.eventTitle}
                   </div>
-                  <div style={{ fontSize: 12, color: "#d4c4f0", lineHeight: 1.4, fontWeight: 500, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: 12, color: C.textSecondary, lineHeight: 1.4, fontWeight: 500, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
                     {selectedMA.marketTitle}
                   </div>
                   <div style={{ display: "flex", gap: 5, marginTop: 7, flexWrap: "wrap" }}>
@@ -1554,170 +1773,230 @@ export default function Canvas() {
                 </div>
               </div>
 
-              {/* Body */}
-              <div className="custom-scrollbar" style={{ overflowY: "auto", flex: 1, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* Body: left/right split */}
+              <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
-                {/* Stats row */}
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[
-                    { label: "Confidence", value: `${selectedMA.confidence}%`, color: "#a855f7" },
-                    { label: "Exp. Value",  value: `${selectedMA.expectedValue >= 0 ? "+" : ""}${(selectedMA.expectedValue * 100).toFixed(0)}%`, color: selectedMA.expectedValue >= 0 ? "#10b981" : "#ef4444" },
-                    { label: "Risk",        value: selectedMA.riskLevel, color: riskColor[selectedMA.riskLevel] },
-                  ].map(s => (
-                    <div key={s.label} style={{
-                      flex: 1, background: "#0d0220", border: "1px solid #2d1b4e", borderRadius: 7,
-                      padding: "7px 10px", textAlign: "center",
-                    }}>
-                      <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", marginBottom: 3 }}>{s.label}</div>
-                      <div style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 700, color: s.color }}>{s.value}</div>
-                    </div>
-                  ))}
+                {/* ── Left: analysis + order ── */}
+                <div className="custom-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+
+                  {/* Stats row */}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[
+                      { label: "Confidence", value: `${selectedMA.confidence}%`, color: "#a855f7" },
+                      { label: "Exp. Value",  value: `${selectedMA.expectedValue >= 0 ? "+" : ""}${(selectedMA.expectedValue * 100).toFixed(0)}%`, color: selectedMA.expectedValue >= 0 ? "#10b981" : "#ef4444" },
+                      { label: "Risk",        value: selectedMA.riskLevel, color: riskColor[selectedMA.riskLevel] },
+                    ].map(s => (
+                      <div key={s.label} style={{
+                        flex: 1, background: C.panelCard, border: `1px solid ${C.border}`, borderRadius: 7,
+                        padding: "7px 10px", textAlign: "center",
+                      }}>
+                        <div style={{ fontSize: 9, color: C.textMuted, fontFamily: "monospace", marginBottom: 3 }}>{s.label}</div>
+                        <div style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 700, color: s.color }}>{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Section label="Key Reasoning" color="#8b5cf6" panelCard={C.panelCard} borderSubtle={C.borderSubtle} textSecondary={C.textSecondary}>{selectedMA.reason}</Section>
+                  <Section label="Bull Case"     color="#10b981" panelCard={C.panelCard} borderSubtle={C.borderSubtle} textSecondary={C.textSecondary}>{selectedMA.bullCase}</Section>
+                  <Section label="Bear Case"     color="#ef4444" panelCard={C.panelCard} borderSubtle={C.borderSubtle} textSecondary={C.textSecondary}>{selectedMA.bearCase}</Section>
+                  <Section label="Risk Notes"    color="#fbbf24" panelCard={C.panelCard} borderSubtle={C.borderSubtle} textSecondary={C.textSecondary}>{selectedMA.riskNotes}</Section>
+
+                  {/* ── Mock Order ── */}
+                  {(() => {
+                    const amt      = parseFloat(orderAmount);
+                    const price    = selectedMA.price; // cents 1-99
+                    const noPrice  = 100 - price;
+                    const estShares = isNaN(amt) || amt <= 0 ? null
+                      : orderSide === "YES"
+                        ? (amt / (price / 100)).toFixed(2)
+                        : (amt / (noPrice / 100)).toFixed(2);
+                    const exposure: Record<string, string> = {
+                      "buy-YES":  "Bullish exposure on YES",
+                      "sell-YES": "Bearish on YES / reducing long",
+                      "buy-NO":   "Bearish on event outcome",
+                      "sell-NO":  "Bullish on event / reducing NO",
+                    };
+                    const expLabel = exposure[`${orderBuySell}-${orderSide}`] ?? "";
+                    const btnGrad  = orderBuySell === "buy"
+                      ? "linear-gradient(135deg,#065f46,#059669)"
+                      : "linear-gradient(135deg,#7f1d1d,#dc2626)";
+                    const btnGlow  = orderBuySell === "buy" ? "#10b98144" : "#ef444444";
+
+                    return (
+                      <div style={{ borderTop: `1px solid ${C.borderSubtle}`, paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+
+                        {/* Section label */}
+                        <div style={{ fontSize: 9, fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.1em", color: "#22d3ee" }}>
+                          Mock Order
+                        </div>
+
+                        {/* Row 1: Buy / Sell */}
+                        <div>
+                          <div style={{ fontSize: 9, color: C.textMuted, fontFamily: "monospace", marginBottom: 4 }}>Side</div>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            {(["buy", "sell"] as const).map(bs => {
+                              const active = orderBuySell === bs;
+                              const isB = bs === "buy";
+                              return (
+                                <button key={bs} onMouseDown={e => e.stopPropagation()}
+                                  onClick={() => { setOrderBuySell(bs); setOrderPlaced(false); }}
+                                  style={{
+                                    flex: 1, padding: "5px 0", borderRadius: 5, fontSize: 11,
+                                    fontFamily: "monospace", fontWeight: 600, cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    background: active ? (isB ? "#10b98118" : "#ef444418") : "transparent",
+                                    border: `1px solid ${active ? (isB ? "#10b98166" : "#ef444466") : C.border}`,
+                                    color: active ? (isB ? "#10b981" : "#ef4444") : C.textMuted,
+                                    boxShadow: active ? `0 0 10px ${isB ? "#10b98122" : "#ef444422"}` : "none",
+                                  }}>
+                                  {isB ? "↑ Buy" : "↓ Sell"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Row 2: YES / NO */}
+                        <div>
+                          <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", marginBottom: 4 }}>Outcome</div>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            {(["YES", "NO"] as const).map(oc => {
+                              const active = orderSide === oc;
+                              const isY = oc === "YES";
+                              return (
+                                <button key={oc} onMouseDown={e => e.stopPropagation()}
+                                  onClick={() => { setOrderSide(oc); setOrderPlaced(false); }}
+                                  style={{
+                                    flex: 1, padding: "5px 0", borderRadius: 5, fontSize: 11,
+                                    fontFamily: "monospace", fontWeight: 600, cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    background: active ? (isY ? "#10b98118" : "#fb923c18") : "transparent",
+                                    border: `1px solid ${active ? (isY ? "#10b98166" : "#fb923c66") : "#2d1b4e"}`,
+                                    color: active ? (isY ? "#10b981" : "#fb923c") : "#4a3060",
+                                  }}>
+                                  {oc} {isY ? `${price}¢` : `${noPrice}¢`}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Amount + shares */}
+                        <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", marginBottom: 3 }}>Amount (USDC)</div>
+                            <input type="number" min="1" value={orderAmount}
+                              onChange={e => { setOrderAmount(e.target.value); setOrderPlaced(false); }}
+                              onMouseDown={e => e.stopPropagation()}
+                              style={{ width: "100%", background: "#0d0220", border: "1px solid #2d1b4e", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "#d4c4f0", fontFamily: "monospace", outline: "none" }} />
+                            {/* Exposure hint */}
+                            <div style={{ fontSize: 9, color: "#6b4d90", fontFamily: "monospace", marginTop: 4 }}>
+                              {expLabel}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right", flexShrink: 0, paddingTop: 14 }}>
+                            <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", marginBottom: 3 }}>Est. shares</div>
+                            <div style={{ fontSize: 14, fontFamily: "monospace", fontWeight: 700, color: "#a855f7" }}>
+                              {estShares ?? "—"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Place / Placed */}
+                        {orderPlaced ? (
+                          <div style={{ padding: "8px 12px", borderRadius: 6, textAlign: "center", fontSize: 11, fontFamily: "monospace", color: "#10b981", background: "#10b98112", border: "1px solid #10b98133" }}>
+                            ✓ {orderBuySell.charAt(0).toUpperCase() + orderBuySell.slice(1)} {orderSide} order placed.
+                          </div>
+                        ) : (
+                          <button onMouseDown={e => e.stopPropagation()} onClick={placeOrder}
+                            style={{ width: "100%", padding: "8px 0", borderRadius: 6, fontSize: 11, fontFamily: "monospace", background: btnGrad, color: "#fff", border: "none", cursor: "pointer", boxShadow: `0 0 20px ${btnGlow}` }}>
+                            Place Mock Order — {orderBuySell.charAt(0).toUpperCase() + orderBuySell.slice(1)} {orderSide} {orderAmount} USDC
+                          </button>
+                        )}
+
+                      </div>
+                    );
+                  })()}
+
                 </div>
 
-                <Section label="Key Reasoning" color="#8b5cf6">{selectedMA.reason}</Section>
-                <Section label="Bull Case"     color="#10b981">{selectedMA.bullCase}</Section>
-                <Section label="Bear Case"     color="#ef4444">{selectedMA.bearCase}</Section>
-                <Section label="Risk Notes"    color="#fbbf24">{selectedMA.riskNotes}</Section>
+                {/* ── Divider ── */}
+                <div style={{ width: 1, background: C.borderSubtle, flexShrink: 0 }} />
 
-                {/* ── AI Chat ────────────────────────────────────────────── */}
-                <div style={{ borderTop: "1px solid #1a0d30", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontSize: 9, fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.1em", color: "#c084fc" }}>
-                    AI Chat — adjust analysis
+                {/* ── Right: AI Strategy Chat ── */}
+                <div style={{ width: 300, flexShrink: 0, display: "flex", flexDirection: "column", background: C.panelElevated }}>
+
+                  {/* Chat header */}
+                  <div style={{ padding: "10px 14px 9px", borderBottom: `1px solid ${C.borderSubtle}`, flexShrink: 0 }}>
+                    <div style={{ fontSize: 10, color: "#c084fc", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 600 }}>
+                      AI Strategy Chat
+                    </div>
+                    <div style={{ fontSize: 9, color: C.textMuted, fontFamily: "monospace", marginTop: 2 }}>
+                      Adjust analysis with natural language
+                    </div>
                   </div>
 
                   {/* Message list */}
-                  {chatMessages.length > 0 && (
-                    <div className="custom-scrollbar" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto" }}>
-                      {chatMessages.map((msg, i) => (
-                        <div key={i} style={{
-                          display: "flex",
-                          justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                  <div className="custom-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+                    {chatMessages.map((msg, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "flex-start", justifyContent: msg.role === "user" ? "flex-end" : "flex-start", gap: 6 }}>
+                        {msg.role === "ai" && (
+                          <div style={{ width: 18, height: 18, borderRadius: "50%", background: C.panelCard, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "#c084fc", flexShrink: 0, marginTop: 2 }}>◈</div>
+                        )}
+                        <div style={{
+                          maxWidth: "84%", fontSize: 11, lineHeight: 1.55, padding: "7px 10px",
+                          borderRadius: msg.role === "user" ? "10px 10px 3px 10px" : "10px 10px 10px 3px",
+                          background: msg.role === "user" ? "linear-gradient(135deg,#3b1f6e,#4c1d9a)" : C.panelCard,
+                          border: `1px solid ${msg.role === "user" ? "#6d28d966" : C.border}`,
+                          color: msg.role === "user" ? "#e2d4f0" : C.textSecondary,
                         }}>
-                          <div style={{
-                            maxWidth: "82%",
-                            fontSize: 11, lineHeight: 1.5,
-                            padding: "6px 10px",
-                            borderRadius: msg.role === "user" ? "8px 8px 2px 8px" : "8px 8px 8px 2px",
-                            background: msg.role === "user" ? "#3b1f6e" : "#0d0220",
-                            border: `1px solid ${msg.role === "user" ? "#6d28d966" : "#2d1b4e"}`,
-                            color: msg.role === "user" ? "#e2d4f0" : "#c4b8e0",
-                          }}>
-                            {msg.text}
-                          </div>
+                          {msg.text}
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      </div>
+                    ))}
+                    {chatMessages.length === 0 && (
+                      <div style={{ fontSize: 10, color: C.textFaint, fontFamily: "monospace", textAlign: "center", padding: "20px 8px", lineHeight: 1.7 }}>
+                        Ask me to adjust the analysis or explain the recommendation.
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
 
-                  {/* Input row */}
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input
+                  {/* Suggested prompts */}
+                  <div style={{ padding: "0 12px 8px", display: "flex", flexWrap: "wrap", gap: 4, flexShrink: 0 }}>
+                    {["make it safer", "explain why", "downside risk", "position size"].map(hint => (
+                      <button key={hint} onMouseDown={e => e.stopPropagation()}
+                        onClick={() => { setChatInput(hint); }}
+                        style={{ fontSize: 9, fontFamily: "monospace", padding: "2px 7px", borderRadius: 4, background: C.panelCard, border: `1px solid ${C.border}`, color: C.textMuted, cursor: "pointer", transition: "border-color 0.15s, color 0.15s" }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#7c3aed66"; (e.currentTarget as HTMLButtonElement).style.color = "#c084fc"; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = C.border; (e.currentTarget as HTMLButtonElement).style.color = C.textMuted; }}
+                      >{hint}</button>
+                    ))}
+                  </div>
+
+                  {/* Input */}
+                  <div style={{ padding: "0 12px 12px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 6, borderTop: `1px solid ${C.borderSubtle}`, paddingTop: 10 }}>
+                    <textarea
                       value={chatInput}
                       onChange={e => setChatInput(e.target.value)}
                       onMouseDown={e => e.stopPropagation()}
                       onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } }}
-                      placeholder="e.g. make it more conservative…"
+                      placeholder={'Try "make it safer" or "increase conviction"'}
+                      rows={2}
                       style={{
-                        flex: 1, background: "#0d0220", border: "1px solid #2d1b4e", borderRadius: 6,
-                        padding: "6px 10px", fontSize: 11, color: "#d4c4f0",
+                        width: "100%", background: C.inputBg, border: `1px solid ${C.border}`, borderRadius: 7,
+                        padding: "8px 10px", fontSize: 11, color: C.textSecondary,
                         fontFamily: "var(--font-geist-sans), Arial, sans-serif",
-                        outline: "none",
+                        outline: "none", resize: "none", lineHeight: 1.5, boxSizing: "border-box",
                       }}
                     />
-                    <button
-                      onMouseDown={e => e.stopPropagation()}
-                      onClick={sendChatMessage}
-                      style={{
-                        flexShrink: 0, padding: "6px 12px", borderRadius: 6, fontSize: 11,
-                        background: "linear-gradient(135deg,#7c3aed,#a855f7)",
-                        color: "#fff", border: "none", cursor: "pointer", fontFamily: "monospace",
-                      }}
-                    >Send</button>
-                  </div>
-                </div>
-
-                {/* ── Mock Order ─────────────────────────────────────────── */}
-                <div style={{ borderTop: "1px solid #1a0d30", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontSize: 9, fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.1em", color: "#22d3ee" }}>
-                    Mock Order
-                  </div>
-
-                  {/* YES / NO toggle */}
-                  <div style={{ display: "flex", gap: 4 }}>
-                    {(["YES", "NO"] as const).map(side => (
-                      <button
-                        key={side}
-                        onMouseDown={e => e.stopPropagation()}
-                        onClick={() => { setOrderSide(side); setOrderPlaced(false); }}
-                        style={{
-                          flex: 1, padding: "5px 0", borderRadius: 5, fontSize: 11, fontFamily: "monospace", fontWeight: 600,
-                          cursor: "pointer",
-                          background: orderSide === side
-                            ? (side === "YES" ? "#10b98122" : "#fb923c22")
-                            : "transparent",
-                          border: `1px solid ${orderSide === side
-                            ? (side === "YES" ? "#10b98166" : "#fb923c66")
-                            : "#2d1b4e"}`,
-                          color: orderSide === side
-                            ? (side === "YES" ? "#10b981" : "#fb923c")
-                            : "#4a3060",
-                          transition: "all 0.15s ease",
-                        }}
-                      >{side}</button>
-                    ))}
-                  </div>
-
-                  {/* Amount + shares */}
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", marginBottom: 3 }}>Amount (USDC)</div>
-                      <input
-                        type="number" min="1"
-                        value={orderAmount}
-                        onChange={e => { setOrderAmount(e.target.value); setOrderPlaced(false); }}
-                        onMouseDown={e => e.stopPropagation()}
-                        style={{
-                          width: "100%", background: "#0d0220", border: "1px solid #2d1b4e", borderRadius: 6,
-                          padding: "6px 10px", fontSize: 12, color: "#d4c4f0",
-                          fontFamily: "monospace", outline: "none",
-                        }}
-                      />
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", marginBottom: 3 }}>Est. shares</div>
-                      <div style={{ fontSize: 14, fontFamily: "monospace", fontWeight: 700, color: "#a855f7" }}>
-                        {isNaN(parseFloat(orderAmount)) || selectedMA.price === 0
-                          ? "—"
-                          : (parseFloat(orderAmount) / (selectedMA.price / 100)).toFixed(2)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Place Order button */}
-                  {orderPlaced ? (
-                    <div style={{
-                      padding: "8px 12px", borderRadius: 6, textAlign: "center",
-                      fontSize: 11, fontFamily: "monospace", color: "#10b981",
-                      background: "#10b98112", border: "1px solid #10b98133",
-                    }}>
-                      ✓ Mock order created.
-                    </div>
-                  ) : (
-                    <button
-                      onMouseDown={e => e.stopPropagation()}
-                      onClick={placeOrder}
-                      style={{
-                        width: "100%", padding: "8px 0", borderRadius: 6, fontSize: 11, fontFamily: "monospace",
-                        background: "linear-gradient(135deg,#7c3aed,#a855f7)",
-                        color: "#fff", border: "none", cursor: "pointer",
-                        boxShadow: "0 0 20px #7c3aed33",
-                      }}
-                    >
-                      Place Mock Order — {orderSide} {orderAmount} USDC
+                    <button onMouseDown={e => e.stopPropagation()} onClick={sendChatMessage}
+                      style={{ alignSelf: "flex-end", padding: "6px 16px", borderRadius: 6, fontSize: 10, fontFamily: "monospace", background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "#fff", border: "none", cursor: "pointer", boxShadow: "0 0 12px #7c3aed33" }}>
+                      Send ↵
                     </button>
-                  )}
-                </div>
+                  </div>
 
+                </div>
               </div>
 
               {/* Resize handle */}
@@ -1772,11 +2051,12 @@ export default function Canvas() {
                   width: portfolioSize.width, height: portfolioSize.height,
                   zIndex: 55,
                   display: "flex", flexDirection: "column",
-                  background: "#08010e",
-                  border: "1px solid #163a3a",
+                  background: C.panel,
+                  border: `1px solid ${isDark ? "#163a3a" : "rgba(34,211,238,0.18)"}`,
                   borderRadius: 12,
-                  boxShadow: "0 12px 48px #00000099, 0 0 60px #22d3ee0e, 0 0 1px #22d3ee22",
+                  boxShadow: isDark ? "0 12px 48px #00000099, 0 0 60px #22d3ee0e, 0 0 1px #22d3ee22" : "0 4px 24px rgba(34,211,238,0.08), 0 1px 4px rgba(0,0,0,0.05), 0 0 0 1px rgba(34,211,238,0.12)",
                   overflow: "hidden",
+                  backdropFilter: isDark ? "none" : "blur(20px)",
                 }}
               >
                 {/* Header — drag handle */}
@@ -2096,29 +2376,30 @@ export default function Canvas() {
               <div
                 style={{
                   position: "absolute", left: 80, top: 80, width: 560, height: 460, zIndex: 50,
-                  background: "#09010f", border: "1px solid #2d1b4e", borderRadius: 10,
+                  background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10,
                   display: "flex", flexDirection: "column",
-                  boxShadow: "0 8px 48px #000a, 0 0 0 1px #7c3aed11",
+                  boxShadow: C.windowShadow,
                   overflow: "hidden",
+                  backdropFilter: isDark ? "none" : "blur(20px)",
                 }}
               >
                 {/* Panel header */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px 9px", borderBottom: "1px solid #1a0d30", flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px 9px", borderBottom: `1px solid ${C.borderSubtle}`, flexShrink: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ color: "#a855f7", fontSize: 14 }}>◈</span>
-                    <span style={{ fontSize: 11, color: "#d4c4f0", fontFamily: "monospace", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.14em" }}>Macro Library</span>
-                    <span style={{ fontSize: 10, color: "#4a3060", fontFamily: "monospace" }}>
+                    <span style={{ fontSize: 11, color: C.textSecondary, fontFamily: "monospace", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.14em" }}>Macro Library</span>
+                    <span style={{ fontSize: 10, color: C.textMuted, fontFamily: "monospace" }}>
                       {macroStrategies.length} strateg{macroStrategies.length === 1 ? "y" : "ies"} · {optionHistory.length} config{optionHistory.length === 1 ? "" : "s"}
                     </span>
                   </div>
-                  <button onClick={() => setShowMacros(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#4a3060", fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
+                  <button onClick={() => setShowMacros(false)} style={{ background: "none", border: "none", cursor: "pointer", color: C.textMuted, fontSize: 14, padding: 2, lineHeight: 1 }}>✕</button>
                 </div>
 
                 {/* Body */}
                 <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
                   {/* Left: category tabs */}
-                  <div className="custom-scrollbar" style={{ width: 150, flexShrink: 0, borderRight: "1px solid #1a0d30", overflowY: "auto", padding: "8px 0" }}>
+                  <div className="custom-scrollbar" style={{ width: 150, flexShrink: 0, borderRight: `1px solid ${C.borderSubtle}`, overflowY: "auto", padding: "8px 0" }}>
                     {["All Macros", "Strategy Macros", ...moduleTypes].map(cat => {
                       const isActive = macroLibTab === cat;
                       const count = cat === "All Macros"
@@ -2175,13 +2456,13 @@ export default function Canvas() {
                           <div style={{ fontSize: 9, color: "#4a3060", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 2 }}>Strategy Macros</div>
                         )}
                         {visibleMacros.map(macro => (
-                          <div key={macro.id} style={{ background: "#0d0220", border: "1px solid #2d1b4e", borderRadius: 8, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+                          <div key={macro.id} style={{ background: C.panelCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
                             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, color: "#d4c4f0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{macro.name}</div>
-                                <div style={{ fontSize: 10, color: "#6b4d90", fontFamily: "monospace", marginTop: 2 }}>{macro.summary}</div>
+                                <div style={{ fontSize: 12, color: C.textSecondary, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{macro.name}</div>
+                                <div style={{ fontSize: 10, color: C.textMuted, fontFamily: "monospace", marginTop: 2 }}>{macro.summary}</div>
                               </div>
-                              <div style={{ fontSize: 9, color: "#3b2060", fontFamily: "monospace", flexShrink: 0 }}>
+                              <div style={{ fontSize: 9, color: C.textFaint, fontFamily: "monospace", flexShrink: 0 }}>
                                 {new Date(macro.createdAt).toLocaleDateString()}
                               </div>
                             </div>
@@ -2269,14 +2550,14 @@ export default function Canvas() {
 
         {/* ── Right Panel — Strategy Settings ── */}
         <aside className="flex-shrink-0 w-64 flex flex-col overflow-hidden"
-          style={{ borderLeft: "1px solid #2d1b4e", background: "#09010f" }}>
+          style={{ borderLeft: `1px solid ${C.border}`, background: C.bg2 }}>
 
           {/* Header */}
-          <div style={{ padding: "12px 16px 10px", borderBottom: "1px solid #1a0d30", flexShrink: 0 }}>
+          <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${C.borderSubtle}`, flexShrink: 0 }}>
             <div style={{ fontSize: 11, color: "#c084fc", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 600 }}>
               Strategy Settings
             </div>
-            <div style={{ fontSize: 10, color: "#4a3060", fontFamily: "monospace", marginTop: 3 }}>
+            <div style={{ fontSize: 10, color: C.textMuted, fontFamily: "monospace", marginTop: 3 }}>
               {droppedNodes.length === 0
                 ? "No modules added yet"
                 : `${droppedNodes.length} module${droppedNodes.length !== 1 ? "s" : ""} configured`}
@@ -2287,7 +2568,7 @@ export default function Canvas() {
           {droppedNodes.length === 0 && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 20px", gap: 12 }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "#7c3aed15", border: "1px solid #7c3aed33", display: "flex", alignItems: "center", justifyContent: "center", color: "#a855f7", fontSize: 16 }}>◈</div>
-              <div style={{ fontSize: 11, color: "#3b2060", fontFamily: "monospace", textAlign: "center", lineHeight: 1.6 }}>
+              <div style={{ fontSize: 11, color: C.textFaint, fontFamily: "monospace", textAlign: "center", lineHeight: 1.6 }}>
                 Drag modules onto<br />Dolphin AI to build<br />your strategy
               </div>
             </div>

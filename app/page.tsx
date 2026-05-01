@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useTheme } from "./theme-context";
 
 // ── Background floating prediction cards (5 max, evenly framing the title) ────
 const CARD_EVENTS = [
@@ -69,6 +70,35 @@ const CAT_COLOR: Record<string, string> = {
 const NAV = ["Markets", "Portfolio", "Analytics", "Docs"];
 
 export default function Home() {
+  const { theme, toggle } = useTheme();
+  const isDark = theme === "dark";
+
+  // ── Theme palette ─────────────────────────────────────────────────────────
+  const C = {
+    bg:          isDark ? "#07000f"                                         : "#F7F3FF",
+    bg2:         isDark ? "transparent"                                     : "rgba(239,233,255,0.60)",
+    navBorder:   isDark ? "#2d1b4e30"                                       : "rgba(124,58,237,0.14)",
+    textPrimary: isDark ? "#f0e6ff"                                         : "#171124",
+    textMuted:   isDark ? "#9d7fc0"                                         : "#5b3e8a",
+    eyebrow:     isDark ? "#7c3aed"                                         : "#7c3aed",
+    headlineShadow: isDark
+      ? "0 0 16px rgba(168,85,247,.85),0 0 40px rgba(168,85,247,.55),0 0 90px rgba(124,58,237,.35),0 0 180px rgba(124,58,237,.18)"
+      : "0 0 10px rgba(124,58,237,0.20),0 0 30px rgba(124,58,237,0.10)",
+    headlineColor: isDark ? "#fff"                                          : "#2a0a5e",
+    cardBg:      isDark ? "linear-gradient(135deg,rgba(14,4,30,.92) 0%,rgba(18,5,38,.88) 100%)" : "linear-gradient(135deg,rgba(255,255,255,0.82) 0%,rgba(248,244,255,0.76) 100%)",
+    cardTitle:   isDark ? "#c4b4e0"                                         : "#2a1a40",
+    tickerBg:    isDark ? "linear-gradient(to bottom,transparent 0%,#07000f 28%)"           : "linear-gradient(to bottom,transparent 0%,#F7F3FF 28%)",
+    tickerBorder:isDark ? "#2d1b4e55"                                       : "rgba(124,58,237,0.14)",
+    tickerFade1: isDark ? "#07000f"                                         : "#F7F3FF",
+    tickerSep:   isDark ? "#2d1b4e44"                                       : "rgba(124,58,237,0.12)",
+    tickerIcon:  isDark ? "#6b4d90"                                         : "#9b84c0",
+    tickerQ:     isDark ? "#8b5cf6"                                         : "#5b21b6",
+    tickerSep2:  isDark ? "#2d1b4e"                                         : "rgba(124,58,237,0.18)",
+    glowRadial:  isDark ? "radial-gradient(ellipse 70% 58% at 50% 44%, #3d0d6e40 0%, transparent 68%)" : "radial-gradient(ellipse 70% 58% at 50% 44%, rgba(124,58,237,0.08) 0%, transparent 68%)",
+    glowLeft:    isDark ? "radial-gradient(ellipse 42% 72% at -4% 55%, #7c3aed1e 0%, transparent 55%)" : "radial-gradient(ellipse 42% 72% at -4% 55%, rgba(124,58,237,0.07) 0%, transparent 55%)",
+    glowRight:   isDark ? "radial-gradient(ellipse 42% 72% at 104% 55%, #1d4ed816 0%, transparent 55%)" : "radial-gradient(ellipse 42% 72% at 104% 55%, rgba(99,102,241,0.06) 0%, transparent 55%)",
+  };
+
   const [cardPx, setCardPx] = useState(CARD_EVENTS.map(c => ({ yes: c.yes, no: c.no })));
   const [tickPx, setTickPx] = useState(TICKER_BASE.map(t => ({ yes: t.yes, no: t.no })));
 
@@ -88,8 +118,8 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="relative min-h-screen flex flex-col overflow-hidden"
-      style={{ background: "#07000f", color: "#f0e6ff" }}>
+    <div className={`relative min-h-screen flex flex-col overflow-hidden theme-${theme}`}
+      style={{ background: C.bg, color: C.textPrimary }}>
 
       <style>{`
         /* ── Card float (slow, gentle — rotation baked in) ── */
@@ -144,15 +174,9 @@ export default function Home() {
       `}</style>
 
       {/* ── Background glows ──────────────────────────────────────────────── */}
-      <div className="absolute inset-0 pointer-events-none" style={{
-        background:"radial-gradient(ellipse 70% 58% at 50% 44%, #3d0d6e40 0%, transparent 68%)",
-      }}/>
-      <div className="absolute inset-0 pointer-events-none" style={{
-        background:"radial-gradient(ellipse 42% 72% at -4% 55%, #7c3aed1e 0%, transparent 55%)",
-      }}/>
-      <div className="absolute inset-0 pointer-events-none" style={{
-        background:"radial-gradient(ellipse 42% 72% at 104% 55%, #1d4ed816 0%, transparent 55%)",
-      }}/>
+      <div className="absolute inset-0 pointer-events-none" style={{ background: C.glowRadial }}/>
+      <div className="absolute inset-0 pointer-events-none" style={{ background: C.glowLeft }}/>
+      <div className="absolute inset-0 pointer-events-none" style={{ background: C.glowRight }}/>
       {/* scan lines for texture */}
       <div className="absolute inset-0 pointer-events-none" style={{
         backgroundImage:"repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(124,58,237,0.012) 3px,rgba(124,58,237,0.012) 4px)",
@@ -160,32 +184,45 @@ export default function Home() {
 
       {/* ── Nav ───────────────────────────────────────────────────────────── */}
       <header className="relative z-30 flex items-center justify-between px-8 py-4 flex-shrink-0"
-        style={{borderBottom:"1px solid #2d1b4e30"}}>
+        style={{ borderBottom: `1px solid ${C.navBorder}`, background: C.bg2, backdropFilter: isDark ? "none" : "blur(12px)" }}>
         <div className="flex items-center gap-3">
           <img src="/logo.png" alt="Dolphin AI" width={26} height={26}
-            className="logo-glow" style={{mixBlendMode:"screen"}}/>
-          <span className="font-semibold text-sm tracking-[0.18em] uppercase" style={{color:"#c084fc"}}>
+            className="logo-glow" style={{ mixBlendMode: isDark ? "screen" : "multiply" }}/>
+          <span className="font-semibold text-sm tracking-[0.18em] uppercase" style={{ color: "#c084fc" }}>
             Dolphin AI
           </span>
         </div>
         <nav className="hidden md:flex items-center gap-8">
           {NAV.map(item => (
-            <a key={item} href="#" className="text-sm" style={{color:"#8b5cf6",transition:"color .15s"}}
-              onMouseEnter={e=>(e.currentTarget.style.color="#d8b4fe")}
-              onMouseLeave={e=>(e.currentTarget.style.color="#8b5cf6")}>
+            <a key={item} href="#" className="text-sm" style={{ color: "#8b5cf6", transition: "color .15s" }}
+              onMouseEnter={e => (e.currentTarget.style.color = isDark ? "#d8b4fe" : "#5b21b6")}
+              onMouseLeave={e => (e.currentTarget.style.color = "#8b5cf6")}>
               {item}
             </a>
           ))}
         </nav>
         <div className="flex items-center gap-3">
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono"
-            style={{background:"#10b98112",border:"1px solid #10b98132",color:"#10b981",boxShadow:"0 0 14px #10b98120"}}>
+            style={{ background: "#10b98112", border: "1px solid #10b98132", color: "#10b981", boxShadow: isDark ? "0 0 14px #10b98120" : "none" }}>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"/>
             Live
           </div>
+          {/* Theme toggle */}
+          <button
+            onClick={toggle}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            style={{
+              width: 32, height: 32, borderRadius: 8,
+              background: isDark ? "#1a0d30" : "rgba(124,58,237,0.08)",
+              border: `1px solid ${isDark ? "#3b1f6e" : "rgba(124,58,237,0.22)"}`,
+              color: isDark ? "#c084fc" : "#7c3aed",
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 15, transition: "all 0.2s ease",
+            }}
+          >{isDark ? "☀" : "☾"}</button>
           <Link href="/canvas"
             className="px-4 py-1.5 rounded-full text-xs font-mono font-medium"
-            style={{background:"linear-gradient(135deg,#7c3aed,#a855f7)",color:"#fff",boxShadow:"0 0 14px #7c3aed44"}}>
+            style={{ background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "#fff", boxShadow: isDark ? "0 0 14px #7c3aed44" : "0 2px 10px rgba(124,58,237,0.28)" }}>
             Open Canvas
           </Link>
         </div>
@@ -223,28 +260,28 @@ export default function Home() {
             <div key={card.id}
               className={`bg-card ${card.cf} pcard`}
               style={{
-                position:"absolute", ...card.pos, zIndex:5,
-                width:188,
-                opacity:0.2,
-                background:"linear-gradient(135deg,rgba(14,4,30,.92) 0%,rgba(18,5,38,.88) 100%)",
-                border:`1px solid ${card.accent}28`,
-                borderRadius:12,
-                padding:"11px 13px",
-                backdropFilter:"blur(8px)",
-                WebkitBackdropFilter:"blur(8px)",
-                boxShadow:`0 0 16px ${card.accent}14,0 4px 20px rgba(0,0,0,.4)`,
+                position: "absolute", ...card.pos, zIndex: 5,
+                width: 188,
+                opacity: 0.2,
+                background: C.cardBg,
+                border: `1px solid ${card.accent}28`,
+                borderRadius: 12,
+                padding: "11px 13px",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                boxShadow: isDark ? `0 0 16px ${card.accent}14,0 4px 20px rgba(0,0,0,.4)` : `0 0 12px ${card.accent}18,0 2px 12px rgba(124,58,237,.08)`,
               }}>
 
               {/* Category */}
-              <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:7}}>
-                <span style={{fontSize:10,color:card.accent}}>{card.icon}</span>
-                <span style={{fontSize:8,fontFamily:"monospace",textTransform:"uppercase",letterSpacing:"0.1em",color:card.accent+"99"}}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7 }}>
+                <span style={{ fontSize: 10, color: card.accent }}>{card.icon}</span>
+                <span style={{ fontSize: 8, fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.1em", color: card.accent + "99" }}>
                   {card.cat}
                 </span>
               </div>
 
               {/* Title */}
-              <div style={{fontSize:11,color:"#c4b4e0",fontWeight:500,lineHeight:1.4,marginBottom:10}}>
+              <div style={{ fontSize: 11, color: C.cardTitle, fontWeight: 500, lineHeight: 1.4, marginBottom: 10 }}>
                 {card.title}
               </div>
 
@@ -291,22 +328,22 @@ export default function Home() {
 
           {/* Eyebrow */}
           <div className="text-xs tracking-[0.32em] uppercase font-mono mb-5"
-            style={{color:"#7c3aed",textShadow:"0 0 12px #7c3aed88"}}>
+            style={{ color: C.eyebrow, textShadow: isDark ? "0 0 12px #7c3aed88" : "none" }}>
             AI-Powered Prediction Markets
           </div>
 
           {/* Main headline */}
           <h1 className="font-semibold tracking-tight mb-5" style={{
-            fontSize:"clamp(3.4rem,10vw,6.8rem)",
-            lineHeight:1.03,
-            color:"#fff",
-            textShadow:"0 0 16px rgba(168,85,247,.85),0 0 40px rgba(168,85,247,.55),0 0 90px rgba(124,58,237,.35),0 0 180px rgba(124,58,237,.18)",
+            fontSize: "clamp(3.4rem,10vw,6.8rem)",
+            lineHeight: 1.03,
+            color: C.headlineColor,
+            textShadow: C.headlineShadow,
           }}>
             Trade the future.
           </h1>
 
           {/* Subtitle */}
-          <p className="text-base md:text-lg leading-relaxed mb-10 max-w-sm" style={{color:"#9d7fc0"}}>
+          <p className="text-base md:text-lg leading-relaxed mb-10 max-w-sm" style={{ color: C.textMuted }}>
             AI-powered prediction markets.<br/>
             Discover, analyze, and act with confidence.
           </p>
@@ -325,47 +362,47 @@ export default function Home() {
       {/* ── Ticker ────────────────────────────────────────────────────────── */}
       <div className="absolute bottom-0 left-0 right-0 z-20"
         style={{
-          borderTop:"1px solid #2d1b4e55",
-          background:"linear-gradient(to bottom,transparent 0%,#07000f 28%)",
-          paddingTop:9, paddingBottom:11,
-          overflow:"hidden",
+          borderTop: `1px solid ${C.tickerBorder}`,
+          background: C.tickerBg,
+          paddingTop: 9, paddingBottom: 11,
+          overflow: "hidden",
         }}>
         {/* LIVE MARKETS label */}
         <div className="absolute left-4 top-1/2 z-10 hidden md:flex items-center gap-2"
-          style={{transform:"translateY(-50%)"}}>
+          style={{ transform: "translateY(-50%)" }}>
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"/>
-          <span style={{fontSize:9,fontFamily:"monospace",color:"#10b981",letterSpacing:"0.14em",
-            textShadow:"0 0 8px #10b981aa"}}>LIVE MARKETS</span>
+          <span style={{ fontSize: 9, fontFamily: "monospace", color: "#10b981", letterSpacing: "0.14em",
+            textShadow: isDark ? "0 0 8px #10b981aa" : "none" }}>LIVE MARKETS</span>
         </div>
 
         {/* Left fade */}
         <div className="absolute inset-y-0 left-0 z-10 pointer-events-none" style={{
-          width:150,
-          background:"linear-gradient(to right,#07000f,transparent)",
+          width: 150,
+          background: `linear-gradient(to right,${C.tickerFade1},transparent)`,
         }}/>
         {/* Right fade */}
         <div className="absolute inset-y-0 right-0 z-10 pointer-events-none" style={{
-          width:100,
-          background:"linear-gradient(to left,#07000f,transparent)",
+          width: 100,
+          background: `linear-gradient(to left,${C.tickerFade1},transparent)`,
         }}/>
 
-        <div style={{overflow:"hidden"}}>
+        <div style={{ overflow: "hidden" }}>
           <div className="ticker-track">
             {[...TICKER_BASE, ...TICKER_BASE].map((item, i) => {
               const p = tickPx[i % TICKER_BASE.length];
               const ac = CAT_COLOR[item.cat] ?? "#8b5cf6";
               return (
                 <div key={i} className="inline-flex items-center gap-2.5 flex-shrink-0"
-                  style={{padding:"0 18px",borderRight:"1px solid #2d1b4e44"}}>
-                  <span style={{fontSize:12,color:"#6b4d90"}}>{item.icon}</span>
-                  <span className="text-xs font-mono" style={{color:"#8b5cf6"}}>{item.q}</span>
-                  <span className="pcell text-xs font-mono font-semibold" style={{color:"#10b981"}}>YES {p.yes}¢</span>
-                  <span style={{color:"#2d1b4e",fontSize:10}}>·</span>
-                  <span className="pcell text-xs font-mono font-semibold" style={{color:"#f87171"}}>NO {p.no}¢</span>
+                  style={{ padding: "0 18px", borderRight: `1px solid ${C.tickerSep}` }}>
+                  <span style={{ fontSize: 12, color: C.tickerIcon }}>{item.icon}</span>
+                  <span className="text-xs font-mono" style={{ color: C.tickerQ }}>{item.q}</span>
+                  <span className="pcell text-xs font-mono font-semibold" style={{ color: "#10b981" }}>YES {p.yes}¢</span>
+                  <span style={{ color: C.tickerSep2, fontSize: 10 }}>·</span>
+                  <span className="pcell text-xs font-mono font-semibold" style={{ color: "#f87171" }}>NO {p.no}¢</span>
                   <span style={{
-                    fontSize:8,fontFamily:"monospace",letterSpacing:"0.06em",
-                    padding:"1px 5px",borderRadius:3,
-                    background:`${ac}14`,border:`1px solid ${ac}33`,color:ac,
+                    fontSize: 8, fontFamily: "monospace", letterSpacing: "0.06em",
+                    padding: "1px 5px", borderRadius: 3,
+                    background: `${ac}14`, border: `1px solid ${ac}33`, color: ac,
                   }}>{item.cat}</span>
                 </div>
               );
